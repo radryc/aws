@@ -1,0 +1,2585 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`StrataStack snapshot matches 1`] = `
+{
+  "Outputs": {
+    "AlbDnsName": {
+      "Description": "ALB DNS — access Guardian UI at / and Monofs at /monofs/",
+      "Value": {
+        "Fn::GetAtt": [
+          "ALBAEE750D2",
+          "DNSName",
+        ],
+      },
+    },
+    "AppUrl": {
+      "Description": "Primary app URL (CloudFront HTTPS when SSO is enabled, else ALB HTTP)",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "http://",
+            {
+              "Fn::GetAtt": [
+                "ALBAEE750D2",
+                "DNSName",
+              ],
+            },
+          ],
+        ],
+      },
+    },
+    "BlobBucketName": {
+      "Description": "S3 bucket for Monofs blob storage",
+      "Value": {
+        "Ref": "BlobBucketC9B7BD92",
+      },
+    },
+    "EcsClusterName": {
+      "Description": "ECS cluster name",
+      "Value": {
+        "Ref": "EcsCluster97242B84",
+      },
+    },
+    "EfsFileSystemId": {
+      "Description": "EFS filesystem ID",
+      "Value": {
+        "Ref": "Efs9E8BF36B",
+      },
+    },
+    "EncryptionKeySecretArn": {
+      "Description": "Set encryption key before first deploy — see secret description for command",
+      "Value": {
+        "Ref": "MonofsEncryptionKeyE93EBE35",
+      },
+    },
+    "GuardianAccessPolicyTokenSecretArn": {
+      "Description": "Bearer token for Doctor/MonoFS access-policy polling",
+      "Value": {
+        "Ref": "GuardianAccessPolicyToken5EC2942B",
+      },
+    },
+    "MonofsRouterEndpoint": {
+      "Description": "Public NLB gRPC endpoint for guardianctl --monofs-router",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            {
+              "Fn::GetAtt": [
+                "MonofsRouterNlb7D6E5896",
+                "DNSName",
+              ],
+            },
+            ":9090",
+          ],
+        ],
+      },
+    },
+    "MonofsTokenSecretArn": {
+      "Description": "MonoFS guardian token secret for guardianctl/pushers",
+      "Value": {
+        "Ref": "MonofsToken5C25C17B",
+      },
+    },
+    "MonofsUrl": {
+      "Description": "MonoFS UI and API",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "http://",
+            {
+              "Fn::GetAtt": [
+                "ALBAEE750D2",
+                "DNSName",
+              ],
+            },
+            "/monofs/",
+          ],
+        ],
+      },
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "ALBAEE750D2": {
+      "DependsOn": [
+        "VpcPublicSubnet1DefaultRoute3DA9E72A",
+        "VpcPublicSubnet1RouteTableAssociation97140677",
+        "VpcPublicSubnet2DefaultRoute97F91067",
+        "VpcPublicSubnet2RouteTableAssociationDD5762D8",
+      ],
+      "Properties": {
+        "LoadBalancerAttributes": [
+          {
+            "Key": "deletion_protection.enabled",
+            "Value": "false",
+          },
+        ],
+        "Scheme": "internet-facing",
+        "SecurityGroups": [
+          {
+            "Fn::GetAtt": [
+              "AlbSg1155C1BE",
+              "GroupId",
+            ],
+          },
+        ],
+        "Subnets": [
+          {
+            "Ref": "VpcPublicSubnet1Subnet5C2D37C4",
+          },
+          {
+            "Ref": "VpcPublicSubnet2Subnet691E08A3",
+          },
+        ],
+        "Type": "application",
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+    },
+    "ALBHttpListener04CE8CD0": {
+      "Properties": {
+        "DefaultActions": [
+          {
+            "FixedResponseConfig": {
+              "ContentType": "text/plain",
+              "MessageBody": "Not Found",
+              "StatusCode": "404",
+            },
+            "Type": "fixed-response",
+          },
+        ],
+        "LoadBalancerArn": {
+          "Ref": "ALBAEE750D2",
+        },
+        "Port": 80,
+        "Protocol": "HTTP",
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+    },
+    "ALBHttpListenerGuardianTargetGroup92A7EEB1": {
+      "Properties": {
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/",
+        "HealthCheckPort": "8090",
+        "Matcher": {
+          "HttpCode": "200-499",
+        },
+        "Port": 8090,
+        "Protocol": "HTTP",
+        "TargetGroupAttributes": [
+          {
+            "Key": "stickiness.enabled",
+            "Value": "false",
+          },
+        ],
+        "TargetType": "ip",
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+    },
+    "ALBHttpListenerGuardianTargetRuleCABBA26E": {
+      "Properties": {
+        "Actions": [
+          {
+            "TargetGroupArn": {
+              "Ref": "ALBHttpListenerGuardianTargetGroup92A7EEB1",
+            },
+            "Type": "forward",
+          },
+        ],
+        "Conditions": [
+          {
+            "Field": "path-pattern",
+            "PathPatternConfig": {
+              "Values": [
+                "/*",
+              ],
+            },
+          },
+        ],
+        "ListenerArn": {
+          "Ref": "ALBHttpListener04CE8CD0",
+        },
+        "Priority": 20,
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+    },
+    "ALBHttpListenerMonofsRouterTargetGroup0291414B": {
+      "Properties": {
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/",
+        "HealthCheckPort": "8080",
+        "Matcher": {
+          "HttpCode": "200-499",
+        },
+        "Port": 8080,
+        "Protocol": "HTTP",
+        "TargetGroupAttributes": [
+          {
+            "Key": "stickiness.enabled",
+            "Value": "false",
+          },
+        ],
+        "TargetType": "ip",
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+    },
+    "ALBHttpListenerMonofsRouterTargetRuleCAD85FA7": {
+      "Properties": {
+        "Actions": [
+          {
+            "TargetGroupArn": {
+              "Ref": "ALBHttpListenerMonofsRouterTargetGroup0291414B",
+            },
+            "Type": "forward",
+          },
+        ],
+        "Conditions": [
+          {
+            "Field": "path-pattern",
+            "PathPatternConfig": {
+              "Values": [
+                "/monofs",
+                "/monofs/*",
+              ],
+            },
+          },
+        ],
+        "ListenerArn": {
+          "Ref": "ALBHttpListener04CE8CD0",
+        },
+        "Priority": 10,
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+    },
+    "AlbSg1155C1BE": {
+      "Properties": {
+        "GroupDescription": "ALB ingress",
+        "SecurityGroupEgress": [
+          {
+            "CidrIp": "0.0.0.0/0",
+            "Description": "ALB to ECS tasks",
+            "FromPort": 0,
+            "IpProtocol": "tcp",
+            "ToPort": 65535,
+          },
+        ],
+        "SecurityGroupIngress": [
+          {
+            "CidrIp": "0.0.0.0/0",
+            "Description": "HTTP from internet",
+            "FromPort": 80,
+            "IpProtocol": "tcp",
+            "ToPort": 80,
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::SecurityGroup",
+    },
+    "AlbSgtoSnapshotStackGuardianSg6A31C1468090CE9B330A": {
+      "Properties": {
+        "Description": "Load balancer to target",
+        "DestinationSecurityGroupId": {
+          "Fn::GetAtt": [
+            "GuardianSg5727B78A",
+            "GroupId",
+          ],
+        },
+        "FromPort": 8090,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AlbSg1155C1BE",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "ToPort": 8090,
+      },
+      "Type": "AWS::EC2::SecurityGroupEgress",
+    },
+    "AlbSgtoSnapshotStackMonofsSg161B17DA808053DB502B": {
+      "Properties": {
+        "Description": "Load balancer to target",
+        "DestinationSecurityGroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "FromPort": 8080,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AlbSg1155C1BE",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "ToPort": 8080,
+      },
+      "Type": "AWS::EC2::SecurityGroupEgress",
+    },
+    "BlobBucketAutoDeleteObjectsCustomResource62926207": {
+      "DeletionPolicy": "Delete",
+      "DependsOn": [
+        "BlobBucketPolicyE9D125C4",
+      ],
+      "Properties": {
+        "BucketName": {
+          "Ref": "BlobBucketC9B7BD92",
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "Custom::S3AutoDeleteObjects",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BlobBucketC9B7BD92": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256",
+              },
+            },
+          ],
+        },
+        "BucketName": "monofs-blobs-123456789012-us-east-1",
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "ExpireOldVersions",
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30,
+              },
+              "Status": "Enabled",
+            },
+          ],
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+        "Tags": [
+          {
+            "Key": "aws-cdk:auto-delete-objects",
+            "Value": "true",
+          },
+        ],
+        "VersioningConfiguration": {
+          "Status": "Enabled",
+        },
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BlobBucketPolicyE9D125C4": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "BlobBucketC9B7BD92",
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false",
+                },
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BlobBucketC9B7BD92",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BlobBucketC9B7BD92",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:PutBucketPolicy",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+                    "Arn",
+                  ],
+                },
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BlobBucketC9B7BD92",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BlobBucketC9B7BD92",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::S3::BucketPolicy",
+    },
+    "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+      "DependsOn": [
+        "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+          "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip",
+        },
+        "Description": {
+          "Fn::Join": [
+            "",
+            [
+              "Lambda function for auto-deleting objects in ",
+              {
+                "Ref": "BlobBucketC9B7BD92",
+              },
+              " S3 bucket.",
+            ],
+          ],
+        },
+        "Handler": "index.handler",
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs24.x",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Sub": "arn:\${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "EcsCluster97242B84": {
+      "Properties": {
+        "ClusterName": "strata",
+        "ClusterSettings": [
+          {
+            "Name": "containerInsights",
+            "Value": "enabled",
+          },
+        ],
+      },
+      "Type": "AWS::ECS::Cluster",
+    },
+    "Efs9E8BF36B": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Encrypted": true,
+        "FileSystemTags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Efs",
+          },
+        ],
+        "LifecyclePolicies": [
+          {
+            "TransitionToIA": "AFTER_14_DAYS",
+          },
+        ],
+        "PerformanceMode": "generalPurpose",
+        "ThroughputMode": "bursting",
+      },
+      "Type": "AWS::EFS::FileSystem",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "EfsEfsMountTarget195B2DD2E": {
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "Efs9E8BF36B",
+        },
+        "SecurityGroups": [
+          {
+            "Fn::GetAtt": [
+              "EfsSgCAB16DA1",
+              "GroupId",
+            ],
+          },
+        ],
+        "SubnetId": {
+          "Ref": "VpcPrivateSubnet1Subnet536B997A",
+        },
+      },
+      "Type": "AWS::EFS::MountTarget",
+    },
+    "EfsEfsMountTarget2315C927F": {
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "Efs9E8BF36B",
+        },
+        "SecurityGroups": [
+          {
+            "Fn::GetAtt": [
+              "EfsSgCAB16DA1",
+              "GroupId",
+            ],
+          },
+        ],
+        "SubnetId": {
+          "Ref": "VpcPrivateSubnet2Subnet3788AAA1",
+        },
+      },
+      "Type": "AWS::EFS::MountTarget",
+    },
+    "EfsFetcherAPAAEDBD00": {
+      "Properties": {
+        "AccessPointTags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Efs/FetcherAP",
+          },
+        ],
+        "FileSystemId": {
+          "Ref": "Efs9E8BF36B",
+        },
+        "RootDirectory": {
+          "CreationInfo": {
+            "OwnerGid": "1000",
+            "OwnerUid": "1000",
+            "Permissions": "755",
+          },
+          "Path": "/fetcher",
+        },
+      },
+      "Type": "AWS::EFS::AccessPoint",
+    },
+    "EfsSearchAP953BA3BA": {
+      "Properties": {
+        "AccessPointTags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Efs/SearchAP",
+          },
+        ],
+        "FileSystemId": {
+          "Ref": "Efs9E8BF36B",
+        },
+        "RootDirectory": {
+          "CreationInfo": {
+            "OwnerGid": "1000",
+            "OwnerUid": "1000",
+            "Permissions": "755",
+          },
+          "Path": "/search",
+        },
+      },
+      "Type": "AWS::EFS::AccessPoint",
+    },
+    "EfsServerAPD071794B": {
+      "Properties": {
+        "AccessPointTags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Efs/ServerAP",
+          },
+        ],
+        "FileSystemId": {
+          "Ref": "Efs9E8BF36B",
+        },
+        "RootDirectory": {
+          "CreationInfo": {
+            "OwnerGid": "0",
+            "OwnerUid": "0",
+            "Permissions": "755",
+          },
+          "Path": "/server",
+        },
+      },
+      "Type": "AWS::EFS::AccessPoint",
+    },
+    "EfsSgCAB16DA1": {
+      "Properties": {
+        "GroupDescription": "EFS NFS",
+        "SecurityGroupEgress": [
+          {
+            "CidrIp": "255.255.255.255/32",
+            "Description": "Disallow all traffic",
+            "FromPort": 252,
+            "IpProtocol": "icmp",
+            "ToPort": 86,
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::SecurityGroup",
+    },
+    "EfsSgfromSnapshotStackMonofsSg161B17DA20499D13A837": {
+      "Properties": {
+        "Description": "NFS from monofs tasks",
+        "FromPort": 2049,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "EfsSgCAB16DA1",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "ToPort": 2049,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "GuardianAccessPolicyToken5EC2942B": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Description": "Bearer token for Doctor/MonoFS access-policy polling",
+        "GenerateSecretString": {
+          "ExcludePunctuation": true,
+          "PasswordLength": 48,
+        },
+        "Name": "strata/guardian/access-policy-token",
+      },
+      "Type": "AWS::SecretsManager::Secret",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "GuardianExecRoleB20C29D9": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "GuardianExecRoleDefaultPolicyAEB0603F": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "MonofsToken5C25C17B",
+              },
+            },
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "GuardianAccessPolicyToken5EC2942B",
+              },
+            },
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/monofs/encryption-key*",
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/monofs/token*",
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/guardian/access-policy-token*",
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/cognito/client-secret*",
+              ],
+            },
+            {
+              "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "LogGroupF5B46931",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "GuardianExecRoleDefaultPolicyAEB0603F",
+        "Roles": [
+          {
+            "Ref": "GuardianExecRoleB20C29D9",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "GuardianSg5727B78A": {
+      "Properties": {
+        "GroupDescription": "Guardian services",
+        "SecurityGroupEgress": [
+          {
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Allow all outbound traffic by default",
+            "IpProtocol": "-1",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::SecurityGroup",
+    },
+    "GuardianSgfromSnapshotStackAlbSg28589A9F8090D72F697B": {
+      "Properties": {
+        "Description": "Load balancer to target",
+        "FromPort": 8090,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "GuardianSg5727B78A",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AlbSg1155C1BE",
+            "GroupId",
+          ],
+        },
+        "ToPort": 8090,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "GuardianSgfromSnapshotStackMonofsSg161B17DA8090DECA0727": {
+      "Properties": {
+        "Description": "Doctor policy poller to Guardian",
+        "FromPort": 8090,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "GuardianSg5727B78A",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "ToPort": 8090,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "GuardiandSvcService4CE4C9E8": {
+      "DependsOn": [
+        "ALBHttpListenerGuardianTargetRuleCABBA26E",
+        "GuardianExecRoleDefaultPolicyAEB0603F",
+        "MonofsExecRoleDefaultPolicy0EF51790",
+        "MonofsRouterSvcServiceB979735E",
+        "MonofsTaskRoleDefaultPolicy1F4F23AD",
+        "MonofsTaskRole657D8FCF",
+        "ServiceDiscoveryNsF5C89176",
+      ],
+      "Properties": {
+        "Cluster": {
+          "Ref": "EcsCluster97242B84",
+        },
+        "DeploymentConfiguration": {
+          "Alarms": {
+            "AlarmNames": [],
+            "Enable": false,
+            "Rollback": false,
+          },
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true,
+          },
+          "MaximumPercent": 200,
+          "MinimumHealthyPercent": 100,
+        },
+        "DeploymentController": {
+          "Type": "ECS",
+        },
+        "DesiredCount": 1,
+        "EnableECSManagedTags": false,
+        "HealthCheckGracePeriodSeconds": 60,
+        "LaunchType": "FARGATE",
+        "LoadBalancers": [
+          {
+            "ContainerName": "guardiand",
+            "ContainerPort": 8090,
+            "TargetGroupArn": {
+              "Ref": "ALBHttpListenerGuardianTargetGroup92A7EEB1",
+            },
+          },
+        ],
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "DISABLED",
+            "SecurityGroups": [
+              {
+                "Fn::GetAtt": [
+                  "GuardianSg5727B78A",
+                  "GroupId",
+                ],
+              },
+            ],
+            "Subnets": [
+              {
+                "Ref": "VpcPrivateSubnet1Subnet536B997A",
+              },
+              {
+                "Ref": "VpcPrivateSubnet2Subnet3788AAA1",
+              },
+            ],
+          },
+        },
+        "ServiceConnectConfiguration": {
+          "Enabled": true,
+          "Namespace": "strata.local",
+          "Services": [
+            {
+              "ClientAliases": [
+                {
+                  "DnsName": "guardiand",
+                  "Port": 8090,
+                },
+              ],
+              "DiscoveryName": "guardiand",
+              "PortName": "http",
+            },
+          ],
+        },
+        "TaskDefinition": {
+          "Ref": "GuardiandTask9275B1FE",
+        },
+      },
+      "Type": "AWS::ECS::Service",
+    },
+    "GuardiandTask9275B1FE": {
+      "Properties": {
+        "ContainerDefinitions": [
+          {
+            "Environment": [
+              {
+                "Name": "GUARDIAN_MONOFS_ROUTER",
+                "Value": "monofs-router:9090",
+              },
+              {
+                "Name": "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES",
+                "Value": "false",
+              },
+              {
+                "Name": "GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES",
+                "Value": "false",
+              },
+              {
+                "Name": "GUARDIAN_UI_LISTEN",
+                "Value": ":8090",
+              },
+              {
+                "Name": "GUARDIAN_UI_BASE_URL",
+                "Value": "/",
+              },
+              {
+                "Name": "GUARDIAN_RECONCILE_INTERVAL",
+                "Value": "1m",
+              },
+              {
+                "Name": "GUARDIAN_PUSHERS",
+                "Value": "local:/.queues/local,aws-123456789012:/.queues/aws-123456789012",
+              },
+              {
+                "Name": "GUARDIAN_ACCESS_POLICY_PATH",
+                "Value": "/.access/envs/dev.yaml",
+              },
+              {
+                "Name": "GUARDIAN_ACCESS_ENFORCE",
+                "Value": "true",
+              },
+            ],
+            "Essential": true,
+            "Image": "cdk-test/mock:latest",
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "LogGroupF5B46931",
+                },
+                "awslogs-region": "us-east-1",
+                "awslogs-stream-prefix": "strata",
+              },
+            },
+            "Name": "guardiand",
+            "PortMappings": [
+              {
+                "ContainerPort": 8090,
+                "Name": "http",
+                "Protocol": "tcp",
+              },
+            ],
+            "Secrets": [
+              {
+                "Name": "GUARDIAN_MONOFS_TOKEN",
+                "ValueFrom": {
+                  "Ref": "MonofsToken5C25C17B",
+                },
+              },
+              {
+                "Name": "GUARDIAN_CLIENT_DISCOVERY_TOKEN",
+                "ValueFrom": {
+                  "Ref": "MonofsToken5C25C17B",
+                },
+              },
+              {
+                "Name": "GUARDIAN_ACCESS_POLICY_TOKEN",
+                "ValueFrom": {
+                  "Ref": "GuardianAccessPolicyToken5EC2942B",
+                },
+              },
+            ],
+          },
+        ],
+        "Cpu": "512",
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "GuardianExecRoleB20C29D9",
+            "Arn",
+          ],
+        },
+        "Family": "guardiand",
+        "Memory": "1024",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": [
+          "FARGATE",
+        ],
+        "RuntimePlatform": {
+          "CpuArchitecture": "X86_64",
+          "OperatingSystemFamily": "LINUX",
+        },
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsTaskRole657D8FCF",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::ECS::TaskDefinition",
+    },
+    "LogGroupF5B46931": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "LogGroupName": "/ecs/strata",
+        "RetentionInDays": 14,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "MonofsEncryptionKeyE93EBE35": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Description": "Monofs 32-byte encryption key (64 hex chars), auto-generated at creation",
+        "GenerateSecretString": {
+          "ExcludeCharacters": "ABCDEFGHIJKLMNOPQRSTUVWXYZghijklmnopqrstuvwxyz",
+          "ExcludePunctuation": true,
+          "PasswordLength": 64,
+          "RequireEachIncludedType": false,
+        },
+        "Name": "strata/monofs/encryption-key",
+      },
+      "Type": "AWS::SecretsManager::Secret",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "MonofsExecRole5844441A": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "MonofsExecRoleDefaultPolicy0EF51790": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "MonofsEncryptionKeyE93EBE35",
+              },
+            },
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "MonofsToken5C25C17B",
+              },
+            },
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/monofs/encryption-key*",
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/monofs/token*",
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/guardian/access-policy-token*",
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:strata/cognito/client-secret*",
+              ],
+            },
+            {
+              "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "LogGroupF5B46931",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "MonofsExecRoleDefaultPolicy0EF51790",
+        "Roles": [
+          {
+            "Ref": "MonofsExecRole5844441A",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "MonofsFetcherSvcService20DA500C": {
+      "DependsOn": [
+        "GuardianExecRoleDefaultPolicyAEB0603F",
+        "MonofsExecRoleDefaultPolicy0EF51790",
+        "MonofsTaskRoleDefaultPolicy1F4F23AD",
+        "MonofsTaskRole657D8FCF",
+        "ServiceDiscoveryNsF5C89176",
+      ],
+      "Properties": {
+        "Cluster": {
+          "Ref": "EcsCluster97242B84",
+        },
+        "DeploymentConfiguration": {
+          "Alarms": {
+            "AlarmNames": [],
+            "Enable": false,
+            "Rollback": false,
+          },
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true,
+          },
+          "MaximumPercent": 200,
+          "MinimumHealthyPercent": 100,
+        },
+        "DeploymentController": {
+          "Type": "ECS",
+        },
+        "DesiredCount": 1,
+        "EnableECSManagedTags": false,
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "DISABLED",
+            "SecurityGroups": [
+              {
+                "Fn::GetAtt": [
+                  "MonofsSg429CB769",
+                  "GroupId",
+                ],
+              },
+            ],
+            "Subnets": [
+              {
+                "Ref": "VpcPrivateSubnet1Subnet536B997A",
+              },
+              {
+                "Ref": "VpcPrivateSubnet2Subnet3788AAA1",
+              },
+            ],
+          },
+        },
+        "ServiceConnectConfiguration": {
+          "Enabled": true,
+          "Namespace": "strata.local",
+          "Services": [
+            {
+              "ClientAliases": [
+                {
+                  "DnsName": "monofs-fetcher",
+                  "Port": 9200,
+                },
+              ],
+              "DiscoveryName": "monofs-fetcher",
+              "PortName": "grpc",
+            },
+          ],
+        },
+        "TaskDefinition": {
+          "Ref": "MonofsFetcherTask85B554CA",
+        },
+      },
+      "Type": "AWS::ECS::Service",
+    },
+    "MonofsFetcherTask85B554CA": {
+      "Properties": {
+        "ContainerDefinitions": [
+          {
+            "Environment": [
+              {
+                "Name": "MONOFS_S3_BUCKET",
+                "Value": {
+                  "Ref": "BlobBucketC9B7BD92",
+                },
+              },
+              {
+                "Name": "MONOFS_S3_REGION",
+                "Value": "us-east-1",
+              },
+            ],
+            "Essential": true,
+            "Image": "cdk-test/mock:latest",
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "LogGroupF5B46931",
+                },
+                "awslogs-region": "us-east-1",
+                "awslogs-stream-prefix": "strata",
+              },
+            },
+            "MountPoints": [
+              {
+                "ContainerPath": "/data/cache",
+                "ReadOnly": false,
+                "SourceVolume": "cache",
+              },
+            ],
+            "Name": "monofs-fetcher",
+            "PortMappings": [
+              {
+                "ContainerPort": 9200,
+                "Name": "grpc",
+                "Protocol": "tcp",
+              },
+              {
+                "ContainerPort": 9201,
+                "Name": "diagnostics",
+                "Protocol": "tcp",
+              },
+            ],
+            "Secrets": [
+              {
+                "Name": "MONOFS_ENCRYPTION_KEY",
+                "ValueFrom": {
+                  "Ref": "MonofsEncryptionKeyE93EBE35",
+                },
+              },
+            ],
+          },
+        ],
+        "Cpu": "512",
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsExecRole5844441A",
+            "Arn",
+          ],
+        },
+        "Family": "monofs-fetcher",
+        "Memory": "1024",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": [
+          "FARGATE",
+        ],
+        "RuntimePlatform": {
+          "CpuArchitecture": "X86_64",
+          "OperatingSystemFamily": "LINUX",
+        },
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsTaskRole657D8FCF",
+            "Arn",
+          ],
+        },
+        "Volumes": [
+          {
+            "EFSVolumeConfiguration": {
+              "AuthorizationConfig": {
+                "AccessPointId": {
+                  "Ref": "EfsFetcherAPAAEDBD00",
+                },
+              },
+              "FilesystemId": {
+                "Ref": "Efs9E8BF36B",
+              },
+              "TransitEncryption": "ENABLED",
+            },
+            "Name": "cache",
+          },
+        ],
+      },
+      "Type": "AWS::ECS::TaskDefinition",
+    },
+    "MonofsRouterNlb7D6E5896": {
+      "DependsOn": [
+        "VpcPublicSubnet1DefaultRoute3DA9E72A",
+        "VpcPublicSubnet1RouteTableAssociation97140677",
+        "VpcPublicSubnet2DefaultRoute97F91067",
+        "VpcPublicSubnet2RouteTableAssociationDD5762D8",
+      ],
+      "Properties": {
+        "LoadBalancerAttributes": [
+          {
+            "Key": "deletion_protection.enabled",
+            "Value": "false",
+          },
+        ],
+        "Scheme": "internet-facing",
+        "Subnets": [
+          {
+            "Ref": "VpcPublicSubnet1Subnet5C2D37C4",
+          },
+          {
+            "Ref": "VpcPublicSubnet2Subnet691E08A3",
+          },
+        ],
+        "Type": "network",
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+    },
+    "MonofsRouterNlbGrpcB92D9641": {
+      "Properties": {
+        "DefaultActions": [
+          {
+            "TargetGroupArn": {
+              "Ref": "MonofsRouterNlbGrpcRouterGroup8F2B55B4",
+            },
+            "Type": "forward",
+          },
+        ],
+        "LoadBalancerArn": {
+          "Ref": "MonofsRouterNlb7D6E5896",
+        },
+        "Port": 9090,
+        "Protocol": "TCP",
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+    },
+    "MonofsRouterNlbGrpcRouterGroup8F2B55B4": {
+      "Properties": {
+        "Port": 9090,
+        "Protocol": "TCP",
+        "TargetType": "ip",
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+    },
+    "MonofsRouterNlbServerGrpcD9ED45F0": {
+      "Properties": {
+        "DefaultActions": [
+          {
+            "TargetGroupArn": {
+              "Ref": "MonofsRouterNlbServerGrpcServerGroup7A693BC6",
+            },
+            "Type": "forward",
+          },
+        ],
+        "LoadBalancerArn": {
+          "Ref": "MonofsRouterNlb7D6E5896",
+        },
+        "Port": 9000,
+        "Protocol": "TCP",
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+    },
+    "MonofsRouterNlbServerGrpcServerGroup7A693BC6": {
+      "Properties": {
+        "Port": 9000,
+        "Protocol": "TCP",
+        "TargetType": "ip",
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+    },
+    "MonofsRouterSvcServiceB979735E": {
+      "DependsOn": [
+        "ALBHttpListenerMonofsRouterTargetRuleCAD85FA7",
+        "GuardianExecRoleDefaultPolicyAEB0603F",
+        "MonofsExecRoleDefaultPolicy0EF51790",
+        "MonofsRouterNlbGrpcB92D9641",
+        "MonofsRouterNlbGrpcRouterGroup8F2B55B4",
+        "MonofsTaskRoleDefaultPolicy1F4F23AD",
+        "MonofsTaskRole657D8FCF",
+        "ServiceDiscoveryNsF5C89176",
+      ],
+      "Properties": {
+        "Cluster": {
+          "Ref": "EcsCluster97242B84",
+        },
+        "DeploymentConfiguration": {
+          "Alarms": {
+            "AlarmNames": [],
+            "Enable": false,
+            "Rollback": false,
+          },
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true,
+          },
+          "MaximumPercent": 200,
+          "MinimumHealthyPercent": 100,
+        },
+        "DeploymentController": {
+          "Type": "ECS",
+        },
+        "DesiredCount": 1,
+        "EnableECSManagedTags": false,
+        "HealthCheckGracePeriodSeconds": 60,
+        "LaunchType": "FARGATE",
+        "LoadBalancers": [
+          {
+            "ContainerName": "monofs-router",
+            "ContainerPort": 9090,
+            "TargetGroupArn": {
+              "Ref": "MonofsRouterNlbGrpcRouterGroup8F2B55B4",
+            },
+          },
+          {
+            "ContainerName": "monofs-router",
+            "ContainerPort": 8080,
+            "TargetGroupArn": {
+              "Ref": "ALBHttpListenerMonofsRouterTargetGroup0291414B",
+            },
+          },
+        ],
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "DISABLED",
+            "SecurityGroups": [
+              {
+                "Fn::GetAtt": [
+                  "MonofsSg429CB769",
+                  "GroupId",
+                ],
+              },
+            ],
+            "Subnets": [
+              {
+                "Ref": "VpcPrivateSubnet1Subnet536B997A",
+              },
+              {
+                "Ref": "VpcPrivateSubnet2Subnet3788AAA1",
+              },
+            ],
+          },
+        },
+        "ServiceConnectConfiguration": {
+          "Enabled": true,
+          "Namespace": "strata.local",
+          "Services": [
+            {
+              "ClientAliases": [
+                {
+                  "DnsName": "monofs-router",
+                  "Port": 9090,
+                },
+              ],
+              "DiscoveryName": "monofs-router",
+              "PortName": "grpc",
+            },
+            {
+              "ClientAliases": [
+                {
+                  "DnsName": "monofs-router-http",
+                  "Port": 8080,
+                },
+              ],
+              "DiscoveryName": "monofs-router-http",
+              "PortName": "http",
+            },
+          ],
+        },
+        "TaskDefinition": {
+          "Ref": "MonofsRouterTaskE8516D3E",
+        },
+      },
+      "Type": "AWS::ECS::Service",
+    },
+    "MonofsRouterTaskE8516D3E": {
+      "Properties": {
+        "ContainerDefinitions": [
+          {
+            "Command": [
+              "--port=9090",
+              "--http-port=8080",
+              "--cluster-id=strata-cluster",
+              "--nodes=node-a=monofs-server:9000",
+              {
+                "Fn::Join": [
+                  "",
+                  [
+                    "--external-addrs=node-a=",
+                    {
+                      "Fn::GetAtt": [
+                        "MonofsRouterNlb7D6E5896",
+                        "DNSName",
+                      ],
+                    },
+                    ":9000",
+                  ],
+                ],
+              },
+              "--fetcher-addrs=monofs-fetcher:9200",
+              "--log-level=warn",
+            ],
+            "Essential": true,
+            "Image": "cdk-test/mock:latest",
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "LogGroupF5B46931",
+                },
+                "awslogs-region": "us-east-1",
+                "awslogs-stream-prefix": "strata",
+              },
+            },
+            "Name": "monofs-router",
+            "PortMappings": [
+              {
+                "ContainerPort": 9090,
+                "Name": "grpc",
+                "Protocol": "tcp",
+              },
+              {
+                "ContainerPort": 8080,
+                "Name": "http",
+                "Protocol": "tcp",
+              },
+            ],
+            "Secrets": [
+              {
+                "Name": "MONOFS_ENCRYPTION_KEY",
+                "ValueFrom": {
+                  "Ref": "MonofsEncryptionKeyE93EBE35",
+                },
+              },
+              {
+                "Name": "MONOFS_TOKEN",
+                "ValueFrom": {
+                  "Ref": "MonofsToken5C25C17B",
+                },
+              },
+            ],
+          },
+        ],
+        "Cpu": "512",
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsExecRole5844441A",
+            "Arn",
+          ],
+        },
+        "Family": "monofs-router",
+        "Memory": "1024",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": [
+          "FARGATE",
+        ],
+        "RuntimePlatform": {
+          "CpuArchitecture": "X86_64",
+          "OperatingSystemFamily": "LINUX",
+        },
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsTaskRole657D8FCF",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::ECS::TaskDefinition",
+    },
+    "MonofsServerSvcServiceEBF24893": {
+      "DependsOn": [
+        "GuardianExecRoleDefaultPolicyAEB0603F",
+        "MonofsExecRoleDefaultPolicy0EF51790",
+        "MonofsRouterNlbServerGrpcD9ED45F0",
+        "MonofsRouterNlbServerGrpcServerGroup7A693BC6",
+        "MonofsTaskRoleDefaultPolicy1F4F23AD",
+        "MonofsTaskRole657D8FCF",
+        "ServiceDiscoveryNsF5C89176",
+      ],
+      "Properties": {
+        "Cluster": {
+          "Ref": "EcsCluster97242B84",
+        },
+        "DeploymentConfiguration": {
+          "Alarms": {
+            "AlarmNames": [],
+            "Enable": false,
+            "Rollback": false,
+          },
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true,
+          },
+          "MaximumPercent": 200,
+          "MinimumHealthyPercent": 0,
+        },
+        "DeploymentController": {
+          "Type": "ECS",
+        },
+        "DesiredCount": 1,
+        "EnableECSManagedTags": false,
+        "HealthCheckGracePeriodSeconds": 60,
+        "LaunchType": "FARGATE",
+        "LoadBalancers": [
+          {
+            "ContainerName": "monofs-server",
+            "ContainerPort": 9000,
+            "TargetGroupArn": {
+              "Ref": "MonofsRouterNlbServerGrpcServerGroup7A693BC6",
+            },
+          },
+        ],
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "DISABLED",
+            "SecurityGroups": [
+              {
+                "Fn::GetAtt": [
+                  "MonofsSg429CB769",
+                  "GroupId",
+                ],
+              },
+            ],
+            "Subnets": [
+              {
+                "Ref": "VpcPrivateSubnet1Subnet536B997A",
+              },
+              {
+                "Ref": "VpcPrivateSubnet2Subnet3788AAA1",
+              },
+            ],
+          },
+        },
+        "ServiceConnectConfiguration": {
+          "Enabled": true,
+          "Namespace": "strata.local",
+          "Services": [
+            {
+              "ClientAliases": [
+                {
+                  "DnsName": "monofs-server",
+                  "Port": 9000,
+                },
+              ],
+              "DiscoveryName": "monofs-server",
+              "PortName": "grpc",
+            },
+            {
+              "ClientAliases": [
+                {
+                  "DnsName": "monofs-server-raft",
+                  "Port": 7000,
+                },
+              ],
+              "DiscoveryName": "monofs-server-raft",
+              "PortName": "raft",
+            },
+          ],
+        },
+        "TaskDefinition": {
+          "Ref": "MonofsServerTaskB8D737C7",
+        },
+      },
+      "Type": "AWS::ECS::Service",
+    },
+    "MonofsServerTaskB8D737C7": {
+      "Properties": {
+        "ContainerDefinitions": [
+          {
+            "Command": [
+              "--addr=:9000",
+              "--metrics-addr=:9100",
+              "--node-id=node-a",
+              "--db-path=/data/db",
+              "--logengine-dir=/data/logengine",
+              "--git-cache=/data/git",
+              "--kvs-data-dir=/data/kvs",
+              "--kvs-api-addr=monofs-server:9000",
+              "--kvs-raft-addr=0.0.0.0:7000",
+              "--kvs-raft-advertise-addr=monofs-server:7000",
+              "--kvs-bootstrap",
+              "--enable-prediction",
+              "--db-sync=true",
+              "--log-level=warn",
+              "--fetcher=monofs-fetcher:9200",
+            ],
+            "Environment": [
+              {
+                "Name": "MONOFS_S3_BUCKET",
+                "Value": {
+                  "Ref": "BlobBucketC9B7BD92",
+                },
+              },
+              {
+                "Name": "MONOFS_S3_REGION",
+                "Value": "us-east-1",
+              },
+              {
+                "Name": "MONOFS_OTEL_SERVICE_NAME",
+                "Value": "monofs.monofs-storage.monofs-server",
+              },
+              {
+                "Name": "OTEL_SERVICE_NAME",
+                "Value": "monofs.monofs-storage.monofs-server",
+              },
+              {
+                "Name": "OTEL_RESOURCE_ATTRIBUTES",
+                "Value": "service.alias=monofs-server,guardian.partition=monofs,guardian.intent=monofs-storage,guardian.asset=monofs-server,guardian.asset.type=Compute,guardian.identity.kind=platform",
+              },
+              {
+                "Name": "MONOFS_OTEL_INSECURE",
+                "Value": "true",
+              },
+              {
+                "Name": "MONOFS_OTEL_METRIC_INTERVAL",
+                "Value": "30s",
+              },
+            ],
+            "Essential": true,
+            "Image": "cdk-test/mock:latest",
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "LogGroupF5B46931",
+                },
+                "awslogs-region": "us-east-1",
+                "awslogs-stream-prefix": "strata",
+              },
+            },
+            "MountPoints": [
+              {
+                "ContainerPath": "/data",
+                "ReadOnly": false,
+                "SourceVolume": "data",
+              },
+            ],
+            "Name": "monofs-server",
+            "PortMappings": [
+              {
+                "ContainerPort": 9000,
+                "Name": "grpc",
+                "Protocol": "tcp",
+              },
+              {
+                "ContainerPort": 7000,
+                "Name": "raft",
+                "Protocol": "tcp",
+              },
+              {
+                "ContainerPort": 9100,
+                "Name": "diagnostics",
+                "Protocol": "tcp",
+              },
+            ],
+            "Secrets": [
+              {
+                "Name": "MONOFS_ENCRYPTION_KEY",
+                "ValueFrom": {
+                  "Ref": "MonofsEncryptionKeyE93EBE35",
+                },
+              },
+            ],
+          },
+        ],
+        "Cpu": "1024",
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsExecRole5844441A",
+            "Arn",
+          ],
+        },
+        "Family": "monofs-server",
+        "Memory": "2048",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": [
+          "FARGATE",
+        ],
+        "RuntimePlatform": {
+          "CpuArchitecture": "X86_64",
+          "OperatingSystemFamily": "LINUX",
+        },
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "MonofsTaskRole657D8FCF",
+            "Arn",
+          ],
+        },
+        "Volumes": [
+          {
+            "EFSVolumeConfiguration": {
+              "AuthorizationConfig": {
+                "AccessPointId": {
+                  "Ref": "EfsServerAPD071794B",
+                },
+              },
+              "FilesystemId": {
+                "Ref": "Efs9E8BF36B",
+              },
+              "TransitEncryption": "ENABLED",
+            },
+            "Name": "data",
+          },
+        ],
+      },
+      "Type": "AWS::ECS::TaskDefinition",
+    },
+    "MonofsSg429CB769": {
+      "Properties": {
+        "GroupDescription": "Monofs services",
+        "SecurityGroupEgress": [
+          {
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Allow all outbound traffic by default",
+            "IpProtocol": "-1",
+          },
+        ],
+        "SecurityGroupIngress": [
+          {
+            "CidrIp": {
+              "Fn::GetAtt": [
+                "Vpc8378EB38",
+                "CidrBlock",
+              ],
+            },
+            "Description": "VPC/Lattice to OTLP HTTP",
+            "FromPort": 4318,
+            "IpProtocol": "tcp",
+            "ToPort": 4318,
+          },
+          {
+            "CidrIp": {
+              "Fn::GetAtt": [
+                "Vpc8378EB38",
+                "CidrBlock",
+              ],
+            },
+            "Description": "VPC to OTLP gRPC",
+            "FromPort": 4317,
+            "IpProtocol": "tcp",
+            "ToPort": 4317,
+          },
+          {
+            "CidrIp": {
+              "Fn::GetAtt": [
+                "Vpc8378EB38",
+                "CidrBlock",
+              ],
+            },
+            "Description": "VPC to OTLP gateway health",
+            "FromPort": 13133,
+            "IpProtocol": "tcp",
+            "ToPort": 13133,
+          },
+          {
+            "CidrIp": {
+              "Fn::GetAtt": [
+                "Vpc8378EB38",
+                "CidrBlock",
+              ],
+            },
+            "Description": "VPC to Doctor query",
+            "FromPort": 18080,
+            "IpProtocol": "tcp",
+            "ToPort": 18080,
+          },
+          {
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Public MonoFS router gRPC (token auth)",
+            "FromPort": 9090,
+            "IpProtocol": "tcp",
+            "ToPort": 9090,
+          },
+          {
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Public MonoFS server gRPC (token auth)",
+            "FromPort": 9000,
+            "IpProtocol": "tcp",
+            "ToPort": 9000,
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::SecurityGroup",
+    },
+    "MonofsSgfromSnapshotStackAlbSg28589A9F808049792EA1": {
+      "Properties": {
+        "Description": "Load balancer to target",
+        "FromPort": 8080,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AlbSg1155C1BE",
+            "GroupId",
+          ],
+        },
+        "ToPort": 8080,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "MonofsSgfromSnapshotStackAlbSg28589A9FALLPORTS8C58AF5C": {
+      "Properties": {
+        "Description": "ALB to monofs (router HTTP)",
+        "FromPort": 0,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AlbSg1155C1BE",
+            "GroupId",
+          ],
+        },
+        "ToPort": 65535,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "MonofsSgfromSnapshotStackGuardianSg6A31C14690008EA6028F": {
+      "Properties": {
+        "Description": "Guardian to monofs-server gRPC",
+        "FromPort": 9000,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "GuardianSg5727B78A",
+            "GroupId",
+          ],
+        },
+        "ToPort": 9000,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "MonofsSgfromSnapshotStackGuardianSg6A31C1469090366C9F88": {
+      "Properties": {
+        "Description": "Guardian to monofs-router gRPC",
+        "FromPort": 9090,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "GuardianSg5727B78A",
+            "GroupId",
+          ],
+        },
+        "ToPort": 9090,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "MonofsSgfromSnapshotStackMonofsSg161B17DAALLPORTS91063F19": {
+      "Properties": {
+        "Description": "Internode for monofs components",
+        "FromPort": 0,
+        "GroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "IpProtocol": "tcp",
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "MonofsSg429CB769",
+            "GroupId",
+          ],
+        },
+        "ToPort": 65535,
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress",
+    },
+    "MonofsTaskRole657D8FCF": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "MonofsTaskRoleDefaultPolicy1F4F23AD": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BlobBucketC9B7BD92",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BlobBucketC9B7BD92",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "MonofsEncryptionKeyE93EBE35",
+              },
+            },
+            {
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "MonofsToken5C25C17B",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "MonofsTaskRoleDefaultPolicy1F4F23AD",
+        "Roles": [
+          {
+            "Ref": "MonofsTaskRole657D8FCF",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "MonofsToken5C25C17B": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Description": "Monofs authentication token (auto-generated)",
+        "GenerateSecretString": {
+          "ExcludePunctuation": true,
+          "PasswordLength": 32,
+        },
+        "Name": "strata/monofs/token",
+      },
+      "Type": "AWS::SecretsManager::Secret",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "ServiceDiscoveryNsF5C89176": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Name": "strata.local",
+        "Vpc": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::ServiceDiscovery::PrivateDnsNamespace",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "Vpc8378EB38": {
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsHostnames": true,
+        "EnableDnsSupport": true,
+        "InstanceTenancy": "default",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc",
+          },
+        ],
+      },
+      "Type": "AWS::EC2::VPC",
+    },
+    "VpcIGWD7BA715C": {
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc",
+          },
+        ],
+      },
+      "Type": "AWS::EC2::InternetGateway",
+    },
+    "VpcPrivateSubnet1DefaultRouteBE02A9ED": {
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "VpcPublicSubnet1NATGateway4D7517AA",
+        },
+        "RouteTableId": {
+          "Ref": "VpcPrivateSubnet1RouteTableB2C5B500",
+        },
+      },
+      "Type": "AWS::EC2::Route",
+    },
+    "VpcPrivateSubnet1RouteTableAssociation70C59FA6": {
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "VpcPrivateSubnet1RouteTableB2C5B500",
+        },
+        "SubnetId": {
+          "Ref": "VpcPrivateSubnet1Subnet536B997A",
+        },
+      },
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+    },
+    "VpcPrivateSubnet1RouteTableB2C5B500": {
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PrivateSubnet1",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "VpcPrivateSubnet1Subnet536B997A": {
+      "Properties": {
+        "AvailabilityZone": "dummy1a",
+        "CidrBlock": "10.0.2.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "Private",
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Private",
+          },
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PrivateSubnet1",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::Subnet",
+    },
+    "VpcPrivateSubnet2DefaultRoute060D2087": {
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "VpcPublicSubnet1NATGateway4D7517AA",
+        },
+        "RouteTableId": {
+          "Ref": "VpcPrivateSubnet2RouteTableA678073B",
+        },
+      },
+      "Type": "AWS::EC2::Route",
+    },
+    "VpcPrivateSubnet2RouteTableA678073B": {
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PrivateSubnet2",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "VpcPrivateSubnet2RouteTableAssociationA89CAD56": {
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "VpcPrivateSubnet2RouteTableA678073B",
+        },
+        "SubnetId": {
+          "Ref": "VpcPrivateSubnet2Subnet3788AAA1",
+        },
+      },
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+    },
+    "VpcPrivateSubnet2Subnet3788AAA1": {
+      "Properties": {
+        "AvailabilityZone": "dummy1b",
+        "CidrBlock": "10.0.3.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "Private",
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Private",
+          },
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PrivateSubnet2",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::Subnet",
+    },
+    "VpcPublicSubnet1DefaultRoute3DA9E72A": {
+      "DependsOn": [
+        "VpcVPCGWBF912B6E",
+      ],
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "VpcIGWD7BA715C",
+        },
+        "RouteTableId": {
+          "Ref": "VpcPublicSubnet1RouteTable6C95E38E",
+        },
+      },
+      "Type": "AWS::EC2::Route",
+    },
+    "VpcPublicSubnet1EIPD7E02669": {
+      "Properties": {
+        "Domain": "vpc",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PublicSubnet1",
+          },
+        ],
+      },
+      "Type": "AWS::EC2::EIP",
+    },
+    "VpcPublicSubnet1NATGateway4D7517AA": {
+      "DependsOn": [
+        "VpcPublicSubnet1DefaultRoute3DA9E72A",
+        "VpcPublicSubnet1RouteTableAssociation97140677",
+      ],
+      "Properties": {
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "VpcPublicSubnet1EIPD7E02669",
+            "AllocationId",
+          ],
+        },
+        "SubnetId": {
+          "Ref": "VpcPublicSubnet1Subnet5C2D37C4",
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PublicSubnet1",
+          },
+        ],
+      },
+      "Type": "AWS::EC2::NatGateway",
+    },
+    "VpcPublicSubnet1RouteTable6C95E38E": {
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PublicSubnet1",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "VpcPublicSubnet1RouteTableAssociation97140677": {
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "VpcPublicSubnet1RouteTable6C95E38E",
+        },
+        "SubnetId": {
+          "Ref": "VpcPublicSubnet1Subnet5C2D37C4",
+        },
+      },
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+    },
+    "VpcPublicSubnet1Subnet5C2D37C4": {
+      "Properties": {
+        "AvailabilityZone": "dummy1a",
+        "CidrBlock": "10.0.0.0/24",
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "Public",
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Public",
+          },
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PublicSubnet1",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::Subnet",
+    },
+    "VpcPublicSubnet2DefaultRoute97F91067": {
+      "DependsOn": [
+        "VpcVPCGWBF912B6E",
+      ],
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "VpcIGWD7BA715C",
+        },
+        "RouteTableId": {
+          "Ref": "VpcPublicSubnet2RouteTable94F7E489",
+        },
+      },
+      "Type": "AWS::EC2::Route",
+    },
+    "VpcPublicSubnet2RouteTable94F7E489": {
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PublicSubnet2",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "VpcPublicSubnet2RouteTableAssociationDD5762D8": {
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "VpcPublicSubnet2RouteTable94F7E489",
+        },
+        "SubnetId": {
+          "Ref": "VpcPublicSubnet2Subnet691E08A3",
+        },
+      },
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+    },
+    "VpcPublicSubnet2Subnet691E08A3": {
+      "Properties": {
+        "AvailabilityZone": "dummy1b",
+        "CidrBlock": "10.0.1.0/24",
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "Public",
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Public",
+          },
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc/PublicSubnet2",
+          },
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::Subnet",
+    },
+    "VpcS3Endpoint4A3DE4B5": {
+      "Properties": {
+        "RouteTableIds": [
+          {
+            "Ref": "VpcPrivateSubnet1RouteTableB2C5B500",
+          },
+          {
+            "Ref": "VpcPrivateSubnet2RouteTableA678073B",
+          },
+          {
+            "Ref": "VpcPublicSubnet1RouteTable6C95E38E",
+          },
+          {
+            "Ref": "VpcPublicSubnet2RouteTable94F7E489",
+          },
+        ],
+        "ServiceName": {
+          "Fn::Join": [
+            "",
+            [
+              "com.amazonaws.",
+              {
+                "Ref": "AWS::Region",
+              },
+              ".s3",
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SnapshotStack/Vpc",
+          },
+        ],
+        "VpcEndpointType": "Gateway",
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::VPCEndpoint",
+    },
+    "VpcVPCGWBF912B6E": {
+      "Properties": {
+        "InternetGatewayId": {
+          "Ref": "VpcIGWD7BA715C",
+        },
+        "VpcId": {
+          "Ref": "Vpc8378EB38",
+        },
+      },
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;

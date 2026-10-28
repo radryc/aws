@@ -1,0 +1,10 @@
+*.js
+!jest.config.js
+*.d.ts
+dist/
+cdk.out/
+node_modules/
+cdk.context.json
+
+# local runtime state
+.monofs-router-state/

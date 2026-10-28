@@ -1,0 +1,5 @@
+# The Dockerfiles only need docker/fetch-source.sh. All application source is
+# fetched from the pinned public repositories at build time.
+*
+!docker/
+!docker/**

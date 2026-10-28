@@ -1,0 +1,32 @@
+{
+  "app": "npx ts-node --project tsconfig.json bin/strata.ts",
+  "watch": {
+    "include": [
+      "bin/**",
+      "lib/**"
+    ]
+  },
+  "context": {
+    "deployMonofsServer": true,
+    "deployMonofsRouter": true,
+    "deployMonofsFetcher": true,
+    "deployMonofsRegistry": false,
+    "deployMonofsSearch": false,
+    "deployGuardian": true,
+    "deployAwsPusher": true,
+    "deploySSO": true,
+    "serverCount": 1,
+    "routerCount": 1,
+    "fetcherCount": 1,
+    "guardianCount": 1,
+    "deployObservability": true,
+    "otlpPartition": "",
+    "otlpStampAccount": false,
+    "latticePrincipalAccounts": "",
+    "otlpGatewayReplicas": 1,
+    "doctorIngestReplicas": 1,
+    "doctorQueryReplicas": 1,
+    "deployClientVpn": false
+  },
+  "requireApproval": "broadening"
+}
