@@ -20,6 +20,9 @@ usage: ./deploy.sh [flags]
   -y|--yes            Skip all confirmation prompts
   -h|--help           Show this help
 
+environment:
+  STRATA_ADMIN_PASSWORD  Demo admin password (generated if unset)
+
 stacks:
   StrataStack        MonoFS + Guardian (always deployed)
   AwsPusherStack     AWS pusher (aws-<account>) — opt-in via --with-pusher
@@ -64,6 +67,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 AWS="aws --profile $AWS_PROFILE --region $AWS_REGION --no-cli-pager"
+
+# Never publish a default demo credential. Use STRATA_ADMIN_PASSWORD when
+# provided, otherwise generate a one-time password for this deployment and
+# pass it to the CDK stack for the demo Cognito users.
+if [ -n "${STRATA_ADMIN_PASSWORD:-}" ]; then
+    ADMIN_PW="$STRATA_ADMIN_PASSWORD"
+    GENERATED_ADMIN_PW=false
+else
+    ADMIN_PW="$(openssl rand -hex 16)"
+    GENERATED_ADMIN_PW=true
+fi
+CDK_CONTEXT=(--context "demoUserPassword=$ADMIN_PW")
 
 echo "=== strata aws deploy ==="
 echo "  profile : $AWS_PROFILE"
@@ -166,14 +181,14 @@ fi
 
 # ---- cdk synth ----
 echo "  cdk synth..."
-npx cdk synth "${STACKS[@]}" --profile "$AWS_PROFILE" --quiet
+npx cdk synth "${STACKS[@]}" "${CDK_CONTEXT[@]}" --profile "$AWS_PROFILE" --quiet
 echo "  ok"
 
 # ---- cdk diff ----
 if ! $SKIP_DIFF; then
     echo ""
     echo "=== changes preview ==="
-    npx cdk diff "${STACKS[@]}" --profile "$AWS_PROFILE" || true
+    npx cdk diff "${STACKS[@]}" "${CDK_CONTEXT[@]}" --profile "$AWS_PROFILE" || true
     echo ""
 
     if ! $SKIP_CONFIRM; then
@@ -190,7 +205,7 @@ fi
 # ---- cdk deploy ----
 echo ""
 echo "[6/6] cdk deploy..."
-npx cdk deploy "${STACKS[@]}" --profile "$AWS_PROFILE" --require-approval never
+npx cdk deploy "${STACKS[@]}" "${CDK_CONTEXT[@]}" --profile "$AWS_PROFILE" --require-approval never
 
 echo ""
 echo "=== deploy complete ==="
@@ -207,7 +222,6 @@ APP_URL=$(get_out AppUrl)
 ALB_DNS=$(get_out AlbDnsName)
 POOL=$(get_out CognitoUserPoolId)
 HOSTED=$(get_out CognitoHostedUIUrl)
-ADMIN_PW="${STRATA_ADMIN_PASSWORD:-StrataDemo2026!}"
 
 echo "  App URL      : $APP_URL"
 echo "  ALB DNS      : $ALB_DNS"
@@ -223,7 +237,12 @@ if [ -n "$POOL" ]; then
     $AWS cognito-idp admin-set-user-password \
         --user-pool-id "$POOL" --username admin@example.com \
         --password "$ADMIN_PW" --permanent >/dev/null 2>&1 || true
-    echo "  Login        : $APP_URL  (admin@example.com / $ADMIN_PW)"
+    if [ "$GENERATED_ADMIN_PW" = true ]; then
+        echo "  Login        : $APP_URL  (admin@example.com / $ADMIN_PW)"
+        echo "  NOTE         : generated password shown once; store it now."
+    else
+        echo "  Login        : $APP_URL  (admin@example.com / \$STRATA_ADMIN_PASSWORD)"
+    fi
     echo "  Hosted UI    : $HOSTED"
 else
     echo "  Login        : $APP_URL"

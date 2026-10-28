@@ -369,7 +369,12 @@ export class StrataStack extends cdk.Stack {
     let cognitoDomain: cognito.UserPoolDomain | undefined;
     let cognitoClientSecret: secretsmanager.Secret | undefined;
 
-    const demoPassword = 'StrataDemo1!';
+    // Demo identities are opt-in. Require an explicit password so no default
+    // credential is published with the stack.
+    const demoPassword = String(ctx('demoUserPassword', ''));
+    if (deploySSO && demoPassword.length < 12) {
+      throw new Error('deploySSO requires -c demoUserPassword=<at-least-12-chars>');
+    }
     const demoGrants = JSON.stringify([
       { subject: 'admin@example.com', partition: '*', role: 'admin' },
       { subject: 'usera@example.com', partition: 'div-a-orders', role: 'admin' },
@@ -1119,11 +1124,6 @@ export class StrataStack extends cdk.Stack {
       new cdk.CfnOutput(this, 'DemoUsers', {
         value: 'usera (usera@example.com), userb (userb@example.com), akadmin (admin@example.com)',
         description: 'Demo users: UserA=DivisionA, UserB=DivisionB, Admin=all',
-      });
-
-      new cdk.CfnOutput(this, 'DemoPassword', {
-        value: demoPassword,
-        description: 'Password for the demo Cognito users (MVP only)',
       });
     }
   }

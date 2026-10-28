@@ -31,6 +31,7 @@ function makeSecureStack(): ObservabilityStack {
     context: {
       deploySSO: true,
       deployObservability: true,
+      demoUserPassword: 'TestDemoPassword123!',
     },
   });
   const strata = new StrataStack(app, 'SecureStrata', {

@@ -368,6 +368,7 @@ describe('StrataStack', () => {
   test('deploySSO=true adds Cognito resources', () => {
     const { stack } = makeStack('SsoStack', {
       deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
     });
     const template = Template.fromStack(stack);
 
@@ -390,7 +391,10 @@ describe('StrataStack', () => {
     template.resourceCountIs('AWS::CloudFront::Distribution', 2);
     template.hasOutput('DoctorUrl', {});
     template.hasOutput('DemoUsers', {});
-    template.hasOutput('DemoPassword', {});
+  });
+
+  test('deploySSO=true requires demoUserPassword', () => {
+    expect(() => makeStack('SsoNoPasswordStack', { deploySSO: true })).toThrow(/demoUserPassword/);
   });
 
   // ─────────────────────────────────────────────────────────
@@ -439,6 +443,7 @@ describe('StrataStack', () => {
   test('SSO outputs when deploySSO=true', () => {
     const { stack } = makeStack('SsoOutputStack', {
       deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
     });
     const template = Template.fromStack(stack);
 
