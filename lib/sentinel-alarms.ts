@@ -247,6 +247,7 @@ export class SentinelDefaultAlarms extends Construct {
     }
     cdk.Tags.of(alarm).add('guardian.io/managed-by', 'guardian');
     cdk.Tags.of(alarm).add('sentinel.io/import', 'true');
+    cdk.Tags.of(alarm).add('sentinel.io/delivery', props.topic ? 'native' : 'sentinel');
     cdk.Tags.of(alarm).add('sentinel.io/rule-pack', 'default');
     cdk.Tags.of(alarm).add('sentinel.io/component', id.includes('probe') ? 'probe' : 'pusher');
     if (this.partition) {
