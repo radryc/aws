@@ -207,6 +207,7 @@ export class ObservabilityStack extends cdk.Stack {
       DOCTOR_ACCESS_RESOLVER: 'allow-all',
       DOCTOR_SESSION_DIR: '/tmp/doctor-sessions',
       DOCTOR_GUARDIAN_API_URL: 'http://guardiand:8090',
+      DOCTOR_SENTINEL_URL: 'http://doctor-sentinel:18082',
       OTEL_GO_DISABLED_INSTRUMENTATIONS: 'nethttp,grpc',
     };
     if (props.federationEnabled) {
@@ -330,6 +331,76 @@ export class ObservabilityStack extends cdk.Stack {
     if (props.monofsRouterSvc) {
       queryService.node.addDependency(props.monofsRouterSvc);
     }
+
+    // ────────────────────────────────────────────────────────────
+    // Doctor Sentinel: alert routing, delivery, rules, and subspace alerts
+    // ────────────────────────────────────────────────────────────
+    const sentinelTask = new ecs.FargateTaskDefinition(this, 'DoctorSentinelTask', {
+      family: 'doctor-sentinel',
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      executionRole: execRole,
+    });
+    const sentinelEnv: Record<string, string> = {
+      DOCTOR_SENTINEL_HTTP_ADDR: ':18082',
+      DOCTOR_SENTINEL_QUERY_URL: 'http://doctor-query:18080',
+      DOCTOR_SENTINEL_MONOFS_LOGENGINE_ADDR: 'monofs-router:9090',
+      DOCTOR_SENTINEL_DEFAULT_TENANT: 'default',
+      DOCTOR_SENTINEL_STORE_ROOT: '/doctor/v1/alerts',
+      DOCTOR_SENTINEL_DELIVERY_ENABLED: 'true',
+      // The query proxy forwards identity headers. Keep allow-all disabled in
+      // production once partition-access headers are wired end to end.
+      DOCTOR_SENTINEL_AUTH_ALLOW_ALL: 'false',
+      OTEL_GO_DISABLED_INSTRUMENTATIONS: 'nethttp,grpc',
+    };
+    const sentinelGuardianHMAC = new secretsmanager.Secret(this, 'SentinelGuardianHMAC', {
+      secretName: 'strata/doctor/sentinel-guardian-hmac',
+      description: 'HMAC secret for Guardian -> Sentinel alert intake',
+      generateSecretString: { excludePunctuation: true, passwordLength: 48 },
+    });
+    sentinelGuardianHMAC.grantRead(execRole);
+    const sentinelSecrets: Record<string, ecs.Secret> = {
+      DOCTOR_MONOFS_TOKEN: ecs.Secret.fromSecretsManager(props.monofsToken),
+      DOCTOR_SENTINEL_GUARDIAN_HMAC_SECRET: ecs.Secret.fromSecretsManager(sentinelGuardianHMAC),
+    };
+    if (props.awsReadEndpoint) {
+      sentinelEnv.DOCTOR_SENTINEL_AWS_ENABLED = 'true';
+      sentinelEnv.DOCTOR_SENTINEL_AWS_URL = props.awsReadEndpoint;
+    }
+    if (awsReadToken) {
+      awsReadToken.grantRead(execRole);
+      sentinelSecrets.DOCTOR_SENTINEL_AWS_TOKEN = ecs.Secret.fromSecretsManager(awsReadToken);
+    }
+    sentinelTask.addContainer('doctor-sentinel', {
+      image: docker('doctor-sentinel'),
+      logging: logDriver,
+      portMappings: [{ name: 'http', containerPort: 18082, protocol: ecs.Protocol.TCP }],
+      environment: sentinelEnv,
+      secrets: sentinelSecrets,
+    });
+    const sentinelService = new ecs.FargateService(this, 'DoctorSentinelSvc', {
+      cluster: props.cluster,
+      taskDefinition: sentinelTask,
+      desiredCount: 1,
+      securityGroups: [observabilitySg],
+      vpcSubnets: props.vpcSubnets,
+      assignPublicIp: false,
+      serviceConnectConfiguration: {
+        namespace: props.serviceConnectNamespace.namespaceName,
+        services: [{ portMappingName: 'http', dnsName: 'doctor-sentinel', port: 18082 }],
+      },
+      minHealthyPercent: 0,
+      maxHealthyPercent: 200,
+      circuitBreaker: { rollback: true },
+    });
+    sentinelService.node.addDependency(props.serviceConnectNamespace);
+    if (props.monofsRouterSvc) {
+      sentinelService.node.addDependency(props.monofsRouterSvc);
+    }
+    new cdk.CfnOutput(this, 'SentinelGuardianHMACSecretArn', {
+      value: sentinelGuardianHMAC.secretArn,
+      description: 'Configure Guardian notifications with a webhook to Sentinel using this HMAC secret',
+    });
 
     // Public Doctor shares the Strata ALB through a dedicated :8080 listener.
     // CloudFront terminates HTTPS and forwards root-relative Doctor UI paths

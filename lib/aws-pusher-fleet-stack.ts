@@ -7,6 +7,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct, IConstruct } from 'constructs';
 import { dockerImage } from './docker-assets';
+import { SentinelDefaultAlarms } from './sentinel-alarms';
 
 export interface AwsPusherFleetStackProps extends cdk.StackProps {
   /** Network + cluster from the main Strata stack (tools account). */
@@ -85,6 +86,9 @@ export class AwsPusherFleetStack extends cdk.Stack {
             'cloudwatch:GetMetricData',
             'cloudwatch:GetMetricStatistics',
             'cloudwatch:ListMetrics',
+            'cloudwatch:DescribeAlarms',
+            'cloudwatch:DescribeAlarmHistory',
+            'cloudwatch:ListTagsForResource',
             'logs:DescribeLogGroups',
             'logs:StartQuery',
             'logs:GetQueryResults',
@@ -187,6 +191,11 @@ export class AwsPusherFleetStack extends cdk.Stack {
       if (props.monofsRouterSvc) {
         service.node.addDependency(props.monofsRouterSvc);
       }
+      new SentinelDefaultAlarms(this, `SentinelDefaultAlarms${suffix}`, {
+        pusherName,
+        partition: (this.node.tryGetContext('sentinelPartition') as string | undefined)?.trim(),
+        service,
+      });
       new cdk.CfnOutput(this, `FleetPusher${index + 1}Name`, { value: pusherName });
       new cdk.CfnOutput(this, `FleetPusher${index + 1}ReadUrl`, { value: `http://${dnsName}:19090` });
       new cdk.CfnOutput(this, `FleetPusher${index + 1}ReadTokenSecretArn`, { value: readToken.secretArn });

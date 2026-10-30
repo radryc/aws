@@ -10,6 +10,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { Construct } from 'constructs';
 import { dockerImage } from './docker-assets';
+import { SentinelDefaultAlarms } from './sentinel-alarms';
 
 export interface AwsObservedPusherStackProps extends cdk.StackProps {
   /** Guardian pusher name. Defaults to aws-<account>. */
@@ -132,6 +133,9 @@ export class AwsObservedPusherStack extends cdk.Stack {
           'ssm:GetParameter',
           'ssm:GetParameters',
           'ssm:GetParametersByPath',
+          'cloudwatch:DescribeAlarms',
+          'cloudwatch:DescribeAlarmHistory',
+          'cloudwatch:ListTagsForResource',
         ],
         resources: ['*'],
       }),
@@ -250,6 +254,14 @@ export class AwsObservedPusherStack extends cdk.Stack {
     if (policyDeps.length > 0) {
       service.node.addDependency(...policyDeps);
     }
+
+    new SentinelDefaultAlarms(this, 'SentinelDefaultAlarms', {
+      pusherName,
+      partition: (this.node.tryGetContext('sentinelPartition') as string | undefined)?.trim(),
+      service,
+      queue: observeQueue,
+      dlq: observeDlq,
+    });
 
     const exposeOnAlb = props.exposeOnAlb ?? true;
     let albUrl: string | undefined;
