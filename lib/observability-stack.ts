@@ -353,8 +353,15 @@ export class ObservabilityStack extends cdk.Stack {
       DOCTOR_SENTINEL_AUTH_ALLOW_ALL: 'false',
       OTEL_GO_DISABLED_INSTRUMENTATIONS: 'nethttp,grpc',
     };
+    const sentinelGuardianHMAC = new secretsmanager.Secret(this, 'SentinelGuardianHMAC', {
+      secretName: 'strata/doctor/sentinel-guardian-hmac',
+      description: 'HMAC secret for Guardian -> Sentinel alert intake',
+      generateSecretString: { excludePunctuation: true, passwordLength: 48 },
+    });
+    sentinelGuardianHMAC.grantRead(execRole);
     const sentinelSecrets: Record<string, ecs.Secret> = {
       DOCTOR_MONOFS_TOKEN: ecs.Secret.fromSecretsManager(props.monofsToken),
+      DOCTOR_SENTINEL_GUARDIAN_HMAC_SECRET: ecs.Secret.fromSecretsManager(sentinelGuardianHMAC),
     };
     if (props.awsReadEndpoint) {
       sentinelEnv.DOCTOR_SENTINEL_AWS_ENABLED = 'true';
@@ -390,6 +397,10 @@ export class ObservabilityStack extends cdk.Stack {
     if (props.monofsRouterSvc) {
       sentinelService.node.addDependency(props.monofsRouterSvc);
     }
+    new cdk.CfnOutput(this, 'SentinelGuardianHMACSecretArn', {
+      value: sentinelGuardianHMAC.secretArn,
+      description: 'Configure Guardian notifications with a webhook to Sentinel using this HMAC secret',
+    });
 
     // Public Doctor shares the Strata ALB through a dedicated :8080 listener.
     // CloudFront terminates HTTPS and forwards root-relative Doctor UI paths
