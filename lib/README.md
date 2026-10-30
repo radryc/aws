@@ -30,3 +30,19 @@ It does **not** create the pusher or a Guardian partition. Deploy one
 `AwsObservedPusherStack` per account/region and let Guardian pull the descriptor.
 
 See `guardian/docs/customer-onboarding.md` for the full flow.
+
+## Sentinel default alarms
+
+`SentinelDefaultAlarms` adds a default CloudWatch alarm pack to the AWS pusher
+stacks:
+
+- probe down, consecutive failures, and stale probe state,
+- pusher CPU/memory,
+- SQS observe queue age and DLQ depth,
+- optional per-probe alarms when `probes` is supplied.
+
+Alarms are tagged with `guardian.io/managed-by=guardian`,
+`sentinel.io/import=true`, `sentinel.io/rule-pack=default`, and
+`sentinel.io/component`. With no `snsTopicArn`, alarms have no actions and
+Sentinel polls them through the pusher read API (`delivery: sentinel`). With an
+`snsTopicArn`, alarms publish to SNS (`delivery: native`).
