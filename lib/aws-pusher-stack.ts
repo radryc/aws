@@ -11,6 +11,7 @@ import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { Construct, IConstruct } from 'constructs';
 import { dockerImage } from './docker-assets';
+import { SentinelDefaultAlarms } from './sentinel-alarms';
 
 export interface AwsPusherStackProps extends cdk.StackProps {
   /** Network + cluster from the main Strata stack. */
@@ -104,6 +105,9 @@ export class AwsPusherStack extends cdk.Stack {
           'cloudwatch:GetMetricData',
           'cloudwatch:GetMetricStatistics',
           'cloudwatch:ListMetrics',
+          'cloudwatch:DescribeAlarms',
+          'cloudwatch:DescribeAlarmHistory',
+          'cloudwatch:ListTagsForResource',
           'logs:DescribeLogGroups',
           'logs:StartQuery',
           'logs:GetQueryResults',
@@ -122,8 +126,9 @@ export class AwsPusherStack extends cdk.Stack {
     // Disable with `-c deployAwsObserve=false`.
     const deployObserve = this.node.tryGetContext('deployAwsObserve') ?? true;
     let observeQueue: sqs.Queue | undefined;
+    let observeDlq: sqs.Queue | undefined;
     if (deployObserve) {
-      const observeDlq = new sqs.Queue(this, 'AwsObserveDlq', {
+      observeDlq = new sqs.Queue(this, 'AwsObserveDlq', {
         queueName: 'guardian-aws-observe-dlq',
         retentionPeriod: cdk.Duration.days(14),
         enforceSSL: true,
@@ -240,6 +245,14 @@ export class AwsPusherStack extends cdk.Stack {
     if (policyDeps.length > 0) {
       svc.node.addDependency(...policyDeps);
     }
+
+    new SentinelDefaultAlarms(this, 'SentinelDefaultAlarms', {
+      pusherName,
+      partition: (this.node.tryGetContext('sentinelPartition') as string | undefined)?.trim(),
+      service: svc,
+      queue: observeQueue,
+      dlq: observeDlq,
+    });
 
     // Expose the read API through the main Strata ALB at /v1/aws/* so Doctor
     // (running outside this ECS cluster) can reach it. Disable with
