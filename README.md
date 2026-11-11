@@ -122,8 +122,9 @@ npx cdk deploy ClientVpnStack \
   -c vpnClientRootCertificateArn=<client-ca-arn>
 ```
 
-See the `docs/observability/control-plane-profiles.md` and
-`docs/observability/aws-deployment.md` documents in the Strata project.
+See [Guardian architecture §10](https://github.com/radryc/guardian/blob/main/docs/architecture.md#10-aws-subsystem)
+and [Doctor architecture](https://github.com/radryc/doctor/blob/main/docs/architecture/overview.md)
+for the control-plane profiles and the wire contracts.
 
 ## Configuration
 
@@ -257,9 +258,9 @@ After deployment, `cdk deploy` prints:
 
 Deploying `AwsPusherStack` enables the per-account read-only observability API
 that Doctor federates into Grafana (CloudWatch PromQL, Logs Insights, X-Ray).
-See `guardian/docs/aws-observability-enablement.md` in the Guardian
-repository for what is provisioned automatically and the few remaining wiring
-steps.
+See the AWS read API section of
+[Guardian architecture](https://github.com/radryc/guardian/blob/main/docs/architecture.md#101-aws-read-api)
+for what is provisioned automatically and the remaining wiring steps.
 
 ## CloudFormation observation (observed intents)
 
@@ -267,7 +268,7 @@ steps.
 (`guardian-aws-observe`, plus a DLQ) that carry CloudFormation stack status and
 drift detection events to the pusher. Guardian pulls the resulting observed
 state from the pusher read API and reports drift against the CDK app stored in
-MonoFS. See `guardian/docs/aws-observed.md` in the Guardian repository.
+MonoFS. See [Guardian architecture §10.3](https://github.com/radryc/guardian/blob/main/docs/architecture.md#103-observed-mode).
 Disable with `npx cdk deploy -c deployAwsObserve=false`.
 
 ## Useful Commands
