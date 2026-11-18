@@ -219,7 +219,6 @@ export class GuardianStack extends cdk.Stack {
         actions: [
           'elasticfilesystem:ClientMount',
           'elasticfilesystem:ClientWrite',
-          'elasticfilesystem:ClientRootAccess',
           'elasticfilesystem:DescribeMountTargets',
         ],
         resources: [handle.fileSystem.attrArn],

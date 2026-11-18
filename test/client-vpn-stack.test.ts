@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { StrataStack } from '../lib/strata-stack';
 import { ClientVpnStack } from '../lib/client-vpn-stack';
 
@@ -25,10 +25,17 @@ describe('ClientVpnStack', () => {
     const stack = makeStack();
     const template = Template.fromStack(stack);
 
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      RetentionInDays: 365,
+    });
     template.hasResourceProperties('AWS::EC2::ClientVpnEndpoint', {
       ClientCidrBlock: '172.16.0.0/22',
       SplitTunnel: true,
       DnsServers: ['10.60.0.2'],
+      ConnectionLogOptions: {
+        Enabled: true,
+        CloudwatchLogGroup: Match.anyValue(),
+      },
     });
     template.hasResourceProperties('AWS::EC2::ClientVpnAuthorizationRule', {
       TargetNetworkCidr: '10.60.0.0/16',

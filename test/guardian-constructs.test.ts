@@ -94,6 +94,21 @@ describe('GuardianStack', () => {
     template.hasResourceProperties('AWS::Logs::LogGroup', {
       LogGroupName: 'guardian/123456789012/us-east-1/aws-demo/demo-stack',
     });
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: [
+              'elasticfilesystem:ClientMount',
+              'elasticfilesystem:ClientWrite',
+              'elasticfilesystem:DescribeMountTargets',
+            ],
+          }),
+        ]),
+      },
+    });
+    const policiesJson = JSON.stringify(template.findResources('AWS::IAM::Policy'));
+    expect(policiesJson).not.toContain('elasticfilesystem:ClientRootAccess');
     template.hasOutput('OutNginxService', {});
     template.hasOutput('OutNginxEdgeDnsName', {});
     template.hasOutput('OutDemoBucketBucket', {});

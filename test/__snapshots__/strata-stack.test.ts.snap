@@ -334,6 +334,156 @@ exports[`StrataStack snapshot matches 1`] = `
       },
       "Type": "AWS::EC2::SecurityGroupEgress",
     },
+    "BlobAccessLogsBucket26ED7E94": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "AccessControl": "LogDeliveryWrite",
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256",
+              },
+            },
+          ],
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "ExpirationInDays": 90,
+              "Id": "ExpireAccessLogs",
+              "Status": "Enabled",
+            },
+          ],
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "ObjectWriter",
+            },
+          ],
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+        "Tags": [
+          {
+            "Key": "aws-cdk:auto-delete-objects",
+            "Value": "true",
+          },
+        ],
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BlobAccessLogsBucketAutoDeleteObjectsCustomResource338E8D1B": {
+      "DeletionPolicy": "Delete",
+      "DependsOn": [
+        "BlobAccessLogsBucketPolicyDCBEE6A0",
+      ],
+      "Properties": {
+        "BucketName": {
+          "Ref": "BlobAccessLogsBucket26ED7E94",
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "Custom::S3AutoDeleteObjects",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BlobAccessLogsBucketPolicyDCBEE6A0": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "BlobAccessLogsBucket26ED7E94",
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false",
+                },
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BlobAccessLogsBucket26ED7E94",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BlobAccessLogsBucket26ED7E94",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:PutBucketPolicy",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+                    "Arn",
+                  ],
+                },
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BlobAccessLogsBucket26ED7E94",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BlobAccessLogsBucket26ED7E94",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::S3::BucketPolicy",
+    },
     "BlobBucketAutoDeleteObjectsCustomResource62926207": {
       "DeletionPolicy": "Delete",
       "DependsOn": [
@@ -360,7 +510,13 @@ exports[`StrataStack snapshot matches 1`] = `
           "ServerSideEncryptionConfiguration": [
             {
               "ServerSideEncryptionByDefault": {
-                "SSEAlgorithm": "AES256",
+                "KMSMasterKeyID": {
+                  "Fn::GetAtt": [
+                    "DataKmsKey0EEAC826",
+                    "Arn",
+                  ],
+                },
+                "SSEAlgorithm": "aws:kms",
               },
             },
           ],
@@ -376,6 +532,12 @@ exports[`StrataStack snapshot matches 1`] = `
               "Status": "Enabled",
             },
           ],
+        },
+        "LoggingConfiguration": {
+          "DestinationBucketName": {
+            "Ref": "BlobAccessLogsBucket26ED7E94",
+          },
+          "LogFilePrefix": "blob-access-logs/",
         },
         "PublicAccessBlockConfiguration": {
           "BlockPublicAcls": true,
@@ -497,7 +659,7 @@ exports[`StrataStack snapshot matches 1`] = `
             [
               "Lambda function for auto-deleting objects in ",
               {
-                "Ref": "BlobBucketC9B7BD92",
+                "Ref": "BlobAccessLogsBucket26ED7E94",
               },
               " S3 bucket.",
             ],
@@ -538,6 +700,39 @@ exports[`StrataStack snapshot matches 1`] = `
       },
       "Type": "AWS::IAM::Role",
     },
+    "DataKmsKey0EEAC826": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Description": "Customer-managed KMS key for Strata EFS and S3 encryption",
+        "EnableKeyRotation": true,
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": "kms:*",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::123456789012:root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Delete",
+    },
     "EcsCluster97242B84": {
       "Properties": {
         "ClusterName": "strata",
@@ -560,6 +755,12 @@ exports[`StrataStack snapshot matches 1`] = `
             "Value": "SnapshotStack/Efs",
           },
         ],
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "DataKmsKey0EEAC826",
+            "Arn",
+          ],
+        },
         "LifecyclePolicies": [
           {
             "TransitionToIA": "AFTER_14_DAYS",
@@ -1968,7 +2169,7 @@ exports[`StrataStack snapshot matches 1`] = `
     },
     "MonofsSgfromSnapshotStackAlbSg28589A9F808049792EA1": {
       "Properties": {
-        "Description": "Load balancer to target",
+        "Description": "ALB to monofs (router HTTP)",
         "FromPort": 8080,
         "GroupId": {
           "Fn::GetAtt": [
@@ -1984,27 +2185,6 @@ exports[`StrataStack snapshot matches 1`] = `
           ],
         },
         "ToPort": 8080,
-      },
-      "Type": "AWS::EC2::SecurityGroupIngress",
-    },
-    "MonofsSgfromSnapshotStackAlbSg28589A9FALLPORTS8C58AF5C": {
-      "Properties": {
-        "Description": "ALB to monofs (router HTTP)",
-        "FromPort": 0,
-        "GroupId": {
-          "Fn::GetAtt": [
-            "MonofsSg429CB769",
-            "GroupId",
-          ],
-        },
-        "IpProtocol": "tcp",
-        "SourceSecurityGroupId": {
-          "Fn::GetAtt": [
-            "AlbSg1155C1BE",
-            "GroupId",
-          ],
-        },
-        "ToPort": 65535,
       },
       "Type": "AWS::EC2::SecurityGroupIngress",
     },
@@ -2128,6 +2308,22 @@ exports[`StrataStack snapshot matches 1`] = `
                   ],
                 },
               ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DataKmsKey0EEAC826",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
