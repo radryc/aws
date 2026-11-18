@@ -138,7 +138,11 @@ All toggles live in `cdk.json` under `context`:
 | `deployMonofsRegistry` | `false` | Docker registry |
 | `deployMonofsSearch` | `false` | Search index |
 | `deployGuardian` | `true` | Guardian control plane |
-| `deploySSO` | `false` | Amazon Cognito SSO for MonoFS + Guardian |
+| `deployAwsPusher` | `true` | Per-account AWS pusher (`AwsPusherStack`) |
+| `deployAwsObserve` | `true` | EventBridge + SQS CloudFormation observation in `AwsPusherStack` |
+| `deployDemoStack` | `true` | Demo stack (`DemoStack`) for scan/import/deploy |
+| `deployObservedPusher` | `false` | Self-contained observed-only pusher (`AwsObservedPusherStack`) |
+| `deploySSO` | `true` | Amazon Cognito SSO for MonoFS + Guardian |
 | `serverCount` | `1` | MonoFS server replicas |
 | `routerCount` | `1` | MonoFS router replicas |
 | `fetcherCount` | `1` | Fetcher replicas |
@@ -197,15 +201,13 @@ After deploy, create users in the AWS Console:
 - API calls use `Authorization: Bearer <id_token>` header
 - Default grant: `admin@example.com` gets admin on all partitions
 
-### Grants
+### Access policy
 
-Grants are configured via `MONOFS_AUTHZ_GRANTS_JSON`:
-
-```json
-[{"subject":"admin@example.com","partition":"*","role":"admin"}]
-```
-
-Roles: `viewer` (read) → `ingester` (read+write) → `maintainer` (read+write+deploy) → `admin` (all partitions).
+Authorization comes from the repo-managed access policy
+(`access/envs/<env>.yaml`) published to Guardian. Add subjects and scopes there;
+roles are `viewer` (read) → `ingester` (read+write) → `maintainer`
+(read+write+deploy) → `admin` (all actions on the listed resources). A wildcard
+admin is global; explicit partition lists are scoped.
 
 ### Without SSO
 
@@ -285,26 +287,34 @@ npm run diff      -- show changes vs deployed stack
 ```
 .
 ├── bin/
-│   └── strata.ts              # CDK app entry point
+│   └── strata.ts                  # CDK app entry point
 ├── lib/
-│   ├── docker-assets.ts       # Shared Docker image asset helper
-│   ├── strata-stack.ts        # MonoFS + Guardian (VPC, ECS, ALB, EFS, S3, IAM, …)
-│   ├── observability-stack.ts # Doctor + OTLP gateway + VPC Lattice
-│   ├── aws-pusher-stack.ts    # Per-account observability/read API pusher
-│   ├── aws-pusher-fleet-stack.ts
+│   ├── README.md                  # Customer onboarding & Sentinel alarm constructs
+│   ├── docker-assets.ts           # Shared Docker image asset helper
+│   ├── strata-stack.ts            # MonoFS + Guardian (VPC, ECS, ALB, EFS, S3, IAM, …)
+│   ├── observability-stack.ts     # Doctor + OTLP gateway + VPC Lattice
+│   ├── aws-pusher-stack.ts        # Per-account observability/read API pusher
+│   ├── aws-pusher-fleet-stack.ts  # Multi-account pusher fleet
 │   ├── aws-observed-pusher-stack.ts
-│   └── client-vpn-stack.ts
+│   ├── client-vpn-stack.ts
+│   ├── demo-stack.ts
+│   ├── guardian-observe.ts        # Customer onboarding construct
+│   ├── sentinel-alarms.ts         # Default CloudWatch alarm pack
+│   └── guardian-constructs/
+│       └── index.ts
 ├── docker/
-│   ├── fetch-source.sh        # Fetches a pinned public source repo
-│   └── *.Dockerfile           # Standalone image builds
+│   ├── fetch-source.sh            # Fetches a pinned public source repo
+│   └── *.Dockerfile               # Standalone image builds
 ├── scripts/
 │   ├── client-vpn-certs.sh
 │   └── client-vpn-config.sh
-├── templates/                 # Guardian AWS asset templates
-├── test/                      # Jest unit/snapshot tests
-├── cdk.json                   # CDK configuration & context toggles
-├── package.json               # Dependencies & scripts
-└── tsconfig.json              # TypeScript config
+├── templates/                     # Guardian AWS asset templates
+├── test/                          # Jest unit/snapshot tests
+├── cdk.json                       # CDK configuration & context toggles
+├── deploy.sh                      # Helper deploy script
+├── wipe.sh                        # Helper teardown script
+├── package.json                   # Dependencies & scripts
+└── tsconfig.json                  # TypeScript config
 ```
 
 ## Teardown

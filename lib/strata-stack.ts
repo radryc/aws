@@ -375,12 +375,6 @@ export class StrataStack extends cdk.Stack {
     if (deploySSO && demoPassword.length < 12) {
       throw new Error('deploySSO requires -c demoUserPassword=<at-least-12-chars>');
     }
-    const demoGrants = JSON.stringify([
-      { subject: 'admin@example.com', partition: '*', role: 'admin' },
-      { subject: 'usera@example.com', partition: 'div-a-orders', role: 'admin' },
-      { subject: 'usera@example.com', partition: 'div-a-billing', role: 'admin' },
-      { subject: 'userb@example.com', partition: 'div-b-inventory', role: 'admin' },
-    ]);
 
     if (deploySSO) {
       userPool = new cognito.UserPool(this, 'UserPool', {
@@ -838,13 +832,12 @@ export class StrataStack extends cdk.Stack {
         routerEnv.MONOFS_ROUTER_OIDC_REDIRECT_URL = `${appBaseUrl}/monofs/auth/callback`;
         routerEnv.MONOFS_OIDC_AUTH_URL = cognitoAuthzUrl;
         routerEnv.MONOFS_ROUTER_OIDC_AUTH_URL = cognitoAuthzUrl;
-        routerEnv.MONOFS_AUTHZ_ENFORCE_INGEST = 'true';
-        routerEnv.MONOFS_AUTHZ_ENFORCE_UI = 'true';
-        routerEnv.MONOFS_AUTHZ_GRANTS_JSON = demoGrants;
-        // MonoFS read-path policy enforcement is intentionally not enabled in
-        // this MVP: the local/Docker onboarding and repo-ingest principals are
-        // not yet represented in the compiled policy. Guardian/MonoFS
-        // ingest/UI grants and Doctor log/trace filtering cover the demo.
+        // Authorization comes from the published access policy. The policy
+        // must be published to /.access/envs/dev.yaml before enforcement is
+        // enabled (see access/README.md).
+        routerEnv.MONOFS_ACCESS_POLICY_URL = 'http://guardiand:8090/api/access/policy';
+        routerEnv.MONOFS_ACCESS_ENFORCE = 'true';
+        routerSecrets.MONOFS_ACCESS_POLICY_TOKEN = ecs.Secret.fromSecretsManager(guardianAccessPolicyToken);
         routerSecrets.MONOFS_OIDC_CLIENT_SECRET = ecs.Secret.fromSecretsManager(cognitoClientSecret);
       }
 
@@ -957,9 +950,7 @@ export class StrataStack extends cdk.Stack {
         guardianEnv.MONOFS_OIDC_SCOPES = 'openid email profile';
         guardianEnv.MONOFS_OIDC_REDIRECT_URL = `${appBaseUrl}/auth/callback`;
         guardianEnv.MONOFS_OIDC_AUTH_URL = cognitoAuthzUrl;
-        guardianEnv.GUARDIAN_AUTHZ_ENFORCE_DEPLOY = 'true';
-        guardianEnv.MONOFS_AUTHZ_ENFORCE_UI = 'true';
-        guardianEnv.MONOFS_AUTHZ_GRANTS_JSON = demoGrants;
+        guardianEnv.GUARDIAN_REQUIRE_UI_AUTH = 'true';
         guardianSecrets.MONOFS_OIDC_CLIENT_SECRET = ecs.Secret.fromSecretsManager(cognitoClientSecret);
       }
 
