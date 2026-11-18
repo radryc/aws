@@ -82,6 +82,13 @@ describe('GuardianStack', () => {
     template.resourceCountIs('AWS::EFS::FileSystem', 1);
     template.hasResourceProperties('AWS::S3::Bucket', {
       VersioningConfiguration: { Status: 'Enabled' },
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          Match.objectLike({
+            ServerSideEncryptionByDefault: Match.objectLike({ SSEAlgorithm: 'aws:kms' }),
+          }),
+        ],
+      },
     });
     template.resourceCountIs('AWS::ECS::Service', 2);
     template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 1);

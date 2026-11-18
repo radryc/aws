@@ -18,9 +18,13 @@ import { Construct } from 'constructs';
 import { dockerImage } from './docker-assets';
 
 export interface StrataStackProps extends cdk.StackProps {
-  /** Optional ACM certificate ARN to enable HTTPS (:443) on the ALB and redirect HTTP (:80) -> HTTPS. */
+  /**
+   * Optional ACM certificate ARN to enable HTTPS (:443) on the ALB and redirect
+   * HTTP (:80) -> HTTPS. Without a certificate the ALB and CloudFront origins
+   * stay on plaintext HTTP and a synth-time warning is emitted.
+   */
   acmCertificateArn?: string;
-  /** When true, require MFA on the Cognito UserPool (default: OPTIONAL with OTP). */
+  /** When true, require MFA on the Cognito UserPool (default: true / MFA REQUIRED). */
   requireMfa?: boolean;
 }
 
@@ -66,7 +70,7 @@ export class StrataStack extends cdk.Stack {
     const deployMonofsSearch = ctxBool('deployMonofsSearch', false);
     const deployGuardian = ctxBool('deployGuardian', true);
     const deploySSO = ctxBool('deploySSO', false);
-    const requireMfa = props?.requireMfa ?? ctxBool('requireMfa', false);
+    const requireMfa = props?.requireMfa ?? ctxBool('requireMfa', true);
     const rawCertArn = props?.acmCertificateArn ?? ctx('acmCertificateArn', undefined);
     const acmCertificateArn = rawCertArn ? String(rawCertArn).trim() || undefined : undefined;
 
@@ -95,6 +99,36 @@ export class StrataStack extends cdk.Stack {
     const privateSubnets = vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS });
     this.vpc = vpc;
     this.privateSubnets = privateSubnets;
+
+    // ───────────────────────────────────────────────────────────
+    // Data-plane ingress policy
+    //
+    // The MonoFS router/server gRPC ports and the Doctor origin listener are
+    // not internet-exposed by default. They are reachable only from the VPC
+    // (or an operator-supplied CIDR list) unless `allowPublicDataPlane=true`
+    // is set explicitly.
+    // ───────────────────────────────────────────────────────────
+    const allowPublicDataPlane = ctxBool('allowPublicDataPlane', false);
+    const dataPlaneIngressCidrs: string[] = (() => {
+      const raw = ctx('dataPlaneIngressCidrs', undefined);
+      if (raw === undefined || raw === null || raw === '') {
+        return [vpc.vpcCidrBlock];
+      }
+      const values = Array.isArray(raw) ? raw : String(raw).split(',');
+      return values.map((value: any) => String(value).trim()).filter((value: string) => value.length > 0);
+    })();
+    const addDataPlaneIngress = (sg: ec2.SecurityGroup, port: number, description: string): void => {
+      for (const cidr of dataPlaneIngressCidrs) {
+        // The public rule below already covers 0.0.0.0/0 when opt-in is set.
+        if (allowPublicDataPlane && cidr === '0.0.0.0/0') {
+          continue;
+        }
+        sg.addIngressRule(ec2.Peer.ipv4(cidr), ec2.Port.tcp(port), `${description} from ${cidr}`);
+      }
+      if (allowPublicDataPlane) {
+        sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(port), `${description} from internet (allowPublicDataPlane)`);
+      }
+    };
 
     // ═══════════════════════════════════════════════════════════════
     // SECURITY GROUPS
@@ -207,6 +241,20 @@ export class StrataStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Server access logs written by S3 log delivery are encrypted with the same
+    // CMK, so the log delivery service principal needs explicit use of the key.
+    dataKmsKey.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowS3ServerAccessLogsDelivery',
+        actions: ['kms:GenerateDataKey*', 'kms:Decrypt'],
+        principals: [new iam.ServicePrincipal('logging.s3.amazonaws.com')],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'aws:SourceAccount': accountId },
+        },
+      }),
+    );
+
     // ═══════════════════════════════════════════════════════════════
     // EFS
     // ═══════════════════════════════════════════════════════════════
@@ -240,7 +288,8 @@ export class StrataStack extends cdk.Stack {
     // S3
     // ═══════════════════════════════════════════════════════════════
     const accessLogsBucket = new s3.Bucket(this, 'BlobAccessLogsBucket', {
-      encryption: s3.BucketEncryption.S3_MANAGED,
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: dataKmsKey,
       enforceSSL: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -371,6 +420,15 @@ export class StrataStack extends cdk.Stack {
     this.alb = alb;
     this.albListener = listener;
 
+    if (!acmCertificateArn) {
+      cdk.Annotations.of(this).addWarningV2(
+        'strata:no-acm-certificate',
+        'No ACM certificate configured: the ALB and CloudFront origins serve plaintext HTTP. ' +
+          'Pass -c acmCertificateArn=arn:aws:acm:<region>:<account>:certificate/<id> to enable HTTPS (:443) ' +
+          'with an HTTP->HTTPS redirect. Making a certificate mandatory is an operator decision, so synth still succeeds.',
+      );
+    }
+
     // ───────────────────────────────────────────────────────────
     // CloudFront (HTTPS front door). Cognito requires https
     // callback URLs, so SSO traffic flows via the *.cloudfront.net
@@ -407,7 +465,22 @@ export class StrataStack extends cdk.Stack {
     // CloudFront -> Doctor-service -> task-definition dependency cycle.
     let doctorUrl: string | undefined;
     if (deploySSO && ctxBool('deployObservability', true)) {
-      albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(8080), 'HTTP from CloudFront to Doctor');
+      addDataPlaneIngress(albSg, 8080, 'HTTP from CloudFront to Doctor');
+      if (!allowPublicDataPlane) {
+        cdk.Annotations.of(this).addWarningV2(
+          'strata:doctor-origin-private',
+          'The Doctor ALB listener (:8080) is only reachable from the VPC CIDR. CloudFront origins are public, ' +
+            'so Doctor will not be reachable through its distribution until the ALB listener is exposed explicitly ' +
+            'with -c allowPublicDataPlane=true (or traffic is fronted by an in-VPC proxy).',
+        );
+      }
+      if (acmCertificateArn) {
+        cdk.Annotations.of(this).addWarningV2(
+          'strata:doctor-origin-http',
+          'The Doctor CloudFront origin stays on HTTP_ONLY because Doctor is served by the dedicated ALB listener ' +
+            'on :8080 (root-relative UI/API paths). Viewer traffic is still redirected to HTTPS by CloudFront.',
+        );
+      }
       const doctorDistribution = new cloudfront.Distribution(this, 'DoctorEdgeDistribution', {
         comment: 'strata doctor edge (HTTPS, Cognito OIDC)',
         priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
@@ -954,8 +1027,17 @@ export class StrataStack extends cdk.Stack {
           port: 9090,
           targets: [svc.loadBalancerTarget({ containerName: 'monofs-router', containerPort: 9090 })],
         });
-      monofsSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(9090), 'Public MonoFS router gRPC (token auth)');
+      addDataPlaneIngress(monofsSg, 9090, 'MonoFS router gRPC (token auth)');
       this.monofsRouterNlbDns = routerNlb.loadBalancerDnsName;
+
+      if (!allowPublicDataPlane) {
+        cdk.Annotations.of(this).addWarningV2(
+          'strata:monofs-nlb-private',
+          'The MonoFS NLB (:9090/:9000) only accepts traffic from the VPC CIDR by default. ' +
+            'Out-of-VPC guardianctl/pusher clients must be allow-listed with ' +
+            '-c dataPlaneIngressCidrs=<cidr,...> or -c allowPublicDataPlane=true.',
+        );
+      }
 
       if (this.monofsServerSvc) {
         routerNlb
@@ -964,7 +1046,7 @@ export class StrataStack extends cdk.Stack {
             port: 9000,
             targets: [this.monofsServerSvc.loadBalancerTarget({ containerName: 'monofs-server', containerPort: 9000 })],
           });
-        monofsSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(9000), 'Public MonoFS server gRPC (token auth)');
+        addDataPlaneIngress(monofsSg, 9000, 'MonoFS server gRPC (token auth)');
       }
 
       listener.addTargets('MonofsRouterTarget', {

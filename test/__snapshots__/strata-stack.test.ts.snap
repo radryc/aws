@@ -342,7 +342,13 @@ exports[`StrataStack snapshot matches 1`] = `
           "ServerSideEncryptionConfiguration": [
             {
               "ServerSideEncryptionByDefault": {
-                "SSEAlgorithm": "AES256",
+                "KMSMasterKeyID": {
+                  "Fn::GetAtt": [
+                    "DataKmsKey0EEAC826",
+                    "Arn",
+                  ],
+                },
+                "SSEAlgorithm": "aws:kms",
               },
             },
           ],
@@ -723,6 +729,36 @@ exports[`StrataStack snapshot matches 1`] = `
                     ],
                   ],
                 },
+              },
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "kms:GenerateDataKey*",
+                "kms:Decrypt",
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012",
+                },
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "logging.s3.amazonaws.com",
+              },
+              "Resource": "*",
+              "Sid": "AllowS3ServerAccessLogsDelivery",
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "logging.s3.amazonaws.com",
               },
               "Resource": "*",
             },
@@ -2147,15 +2183,51 @@ exports[`StrataStack snapshot matches 1`] = `
             "ToPort": 18080,
           },
           {
-            "CidrIp": "0.0.0.0/0",
-            "Description": "Public MonoFS router gRPC (token auth)",
+            "CidrIp": {
+              "Fn::GetAtt": [
+                "Vpc8378EB38",
+                "CidrBlock",
+              ],
+            },
+            "Description": {
+              "Fn::Join": [
+                "",
+                [
+                  "MonoFS router gRPC (token auth) from ",
+                  {
+                    "Fn::GetAtt": [
+                      "Vpc8378EB38",
+                      "CidrBlock",
+                    ],
+                  },
+                ],
+              ],
+            },
             "FromPort": 9090,
             "IpProtocol": "tcp",
             "ToPort": 9090,
           },
           {
-            "CidrIp": "0.0.0.0/0",
-            "Description": "Public MonoFS server gRPC (token auth)",
+            "CidrIp": {
+              "Fn::GetAtt": [
+                "Vpc8378EB38",
+                "CidrBlock",
+              ],
+            },
+            "Description": {
+              "Fn::Join": [
+                "",
+                [
+                  "MonoFS server gRPC (token auth) from ",
+                  {
+                    "Fn::GetAtt": [
+                      "Vpc8378EB38",
+                      "CidrBlock",
+                    ],
+                  },
+                ],
+              ],
+            },
             "FromPort": 9000,
             "IpProtocol": "tcp",
             "ToPort": 9000,

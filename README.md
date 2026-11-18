@@ -143,6 +143,10 @@ All toggles live in `cdk.json` under `context`:
 | `deployDemoStack` | `true` | Demo stack (`DemoStack`) for scan/import/deploy |
 | `deployObservedPusher` | `false` | Self-contained observed-only pusher (`AwsObservedPusherStack`) |
 | `deploySSO` | `true` | Amazon Cognito SSO for MonoFS + Guardian |
+| `requireMfa` | `true` | Require TOTP MFA for Cognito users (`false` downgrades to optional) |
+| `acmCertificateArn` | empty | ACM cert ARN for the ALB `:443` listener; enables HTTP→HTTPS redirect and `HTTPS_ONLY` CloudFront origins. Without it, plaintext HTTP is used and synth warns |
+| `allowPublicDataPlane` | `false` | Expose MonoFS gRPC (`9000`/`9090`) and the Doctor origin (`8080`) to `0.0.0.0/0` |
+| `dataPlaneIngressCidrs` | VPC CIDR | Comma-separated CIDRs allowed to reach the data-plane ports when public exposure is off |
 | `serverCount` | `1` | MonoFS server replicas |
 | `routerCount` | `1` | MonoFS router replicas |
 | `fetcherCount` | `1` | Fetcher replicas |
