@@ -29,7 +29,8 @@ It creates:
 It does **not** create the pusher or a Guardian partition. Deploy one
 `AwsObservedPusherStack` per account/region and let Guardian pull the descriptor.
 
-See `guardian/docs/customer-onboarding.md` for the full flow.
+See `guardian/docs/architecture.md` (AWS subsystem, observed mode) for the full
+flow.
 
 ## Sentinel default alarms
 

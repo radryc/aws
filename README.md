@@ -86,7 +86,8 @@ You can also override them per build (`--build-arg MONOFS_REF=<sha>`).
 `ObservabilityStack` adds the AWS-hosted trace plane:
 
 - `doctor-ingest` (OTLP 4317/4318 → MonoFS)
-- `doctor-query` (UI/API 18080, public CloudFront HTTPS + Cognito OIDC)
+- `doctor-query` (UI/API 18080, served through the Strata CloudFront edge with
+  Cognito OIDC when SSO is enabled)
 - `guardian-otlp-gateway` (OTLP receiver → Doctor)
 - VPC Lattice service network `strata-observability` and service `strata-otlp`
 - optional AWS RAM share for workload accounts
@@ -94,6 +95,7 @@ You can also override them per build (`--build-arg MONOFS_REF=<sha>`).
 ```bash
 npx cdk deploy StrataStack ObservabilityStack \
   -c deploySSO=true \
+  -c demoUserPassword='<at-least-12-chars>' \
   -c deployObservability=true \
   -c deployAwsPusher=false \
   -c deployDemoStack=false \
@@ -116,6 +118,7 @@ scripts/client-vpn-certs.sh --profile default --region us-east-1 \
 
 npx cdk deploy ClientVpnStack \
   -c deploySSO=true \
+  -c demoUserPassword='<at-least-12-chars>' \
   -c deployObservability=true \
   -c deployClientVpn=true \
   -c vpnServerCertificateArn=<server-arn> \
@@ -128,14 +131,16 @@ for the control-plane profiles and the wire contracts.
 
 ## Configuration
 
-All toggles live in `cdk.json` under `context`:
+Toggles are read from CDK context: the values in `cdk.json` under `context`,
+overridden per deploy with `-c`. The defaults below match `cdk.json` plus the
+code-level fallbacks:
 
 | Key | Default | Description |
 |---|---|---|
 | `deployMonofsServer` | `true` | MonoFS storage node |
 | `deployMonofsRouter` | `true` | ALB-exposed HTTP/gRPC router |
 | `deployMonofsFetcher` | `true` | S3 blob fetcher |
-| `deployMonofsRegistry` | `false` | Docker registry |
+| `deployMonofsRegistry` | `false` | OCI registry proxy (pull-through cache) |
 | `deployMonofsSearch` | `false` | Search index |
 | `deployGuardian` | `true` | Guardian control plane |
 | `deployAwsPusher` | `true` | Per-account AWS pusher (`AwsPusherStack`) |
@@ -178,18 +183,24 @@ npx cdk deploy -c deployMonofsSearch=true -c serverCount=3
 Enable SSO to require authentication for Guardian UI and MonoFS router:
 
 ```bash
-npm run deploy -- -c deploySSO=true
+npm run deploy -- -c deploySSO=true -c demoUserPassword='<at-least-12-chars>'
 ```
+
+`deploySSO=true` requires `demoUserPassword` (12+ characters) or synth fails.
 
 This provisions:
 - **Cognito User Pool** (email-based sign-in)
 - **App Client** (OIDC authorization code flow + PKCE)
-- **Hosted UI** at `https://<domain>.auth.<region>.amazoncognito.com`
+- **Hosted UI** at `https://strata-<account>.auth.<region>.amazoncognito.com`
 - **Client secret** stored in Secrets Manager (`strata/cognito/client-secret`)
+- **Demo identities** `usera@example.com`, `userb@example.com`, and
+  `admin@example.com` (username `akadmin`), all with the supplied permanent
+  password
 
 ### Create users
 
-After deploy, create users in the AWS Console:
+The stack seeds the three demo identities above. To add more, use the AWS
+Console:
 
 1. Go to **Cognito** → **User pools** → `strata`
 2. Click **Users** → **Create user**
@@ -203,7 +214,8 @@ After deploy, create users in the AWS Console:
 - Guardian exchanges the code for tokens and sets a session cookie
 - MonoFS router (`/monofs/auth/login`) does the same via `/monofs/auth/callback`
 - API calls use `Authorization: Bearer <id_token>` header
-- Default grant: `admin@example.com` gets admin on all partitions
+- Default grant: `admin@example.com` is an admin for the bootstrap partition
+  list in `access/base.yaml`; other subjects get only the scopes they declare
 
 ### Access policy
 
@@ -236,7 +248,7 @@ The CDK creates the secret placeholder. You must populate it for the services to
 | **VPC** | 2 AZs, public + private subnets, 1 NAT gateway |
 | **ECS Cluster** | `strata`, Fargate, Container Insights enabled |
 | **ECS Services** | monofs-server, monofs-router, monofs-fetcher, guardiand (+ optional registry, search) |
-| **ALB** | Internet-facing HTTP on port 80 |
+| **ALB** | Internet-facing; HTTP `:80` (HTTPS `:443` when `acmCertificateArn` is set) |
 | **EFS** | Encrypted, lifecycle to IA after 14 days, access points for server/fetcher/search |
 | **S3** | `monofs-blobs-{account}-{region}`, versioned, encrypted, 30-day noncurrent expiration |
 | **Secrets Manager** | `strata/monofs/encryption-key`, `strata/monofs/token` |
@@ -251,14 +263,22 @@ After deployment, `cdk deploy` prints:
 
 | Output | Purpose |
 |---|---|
-| `AlbDnsName` | ALB DNS — Guardian UI at `/`, MonoFS at `/monofs/` |
+| `AlbDnsName` | ALB DNS name (origin for the Guardian and MonoFS routes) |
+| `AppUrl` | User-facing base URL — CloudFront when SSO is on, otherwise the ALB |
+| `MonofsUrl` | MonoFS UI at `<AppUrl>/monofs/` |
+| `MonofsTokenSecretArn` | Secret ARN for the static `MONOFS_TOKEN` |
+| `MonofsRouterEndpoint` | Router NLB endpoint (`<dns>:9090`) |
 | `EcsClusterName` | ECS cluster name (`strata`) |
 | `BlobBucketName` | S3 bucket for blob storage |
 | `EfsFileSystemId` | EFS filesystem ID |
 | `EncryptionKeySecretArn` | Secret ARN for the encryption key |
+| `GuardianAccessPolicyTokenSecretArn` | Secret ARN for Guardian access-policy publishing |
+| `DoctorUrl` | Doctor UI/API URL (SSO + observability enabled) |
 | `CognitoUserPoolId` (SSO) | Cognito User Pool ID |
 | `CognitoClientId` (SSO) | Cognito App Client ID |
 | `CognitoHostedUIUrl` (SSO) | Cognito hosted UI URL |
+| `CognitoLoginUrl` (SSO) | Prebuilt hosted-UI login URL |
+| `DemoUsers` (SSO) | Seeded demo identities |
 
 ## Account observability (CloudWatch + X-Ray → Grafana)
 
