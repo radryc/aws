@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as vpclattice from 'aws-cdk-lib/aws-vpclattice';
 import { Construct } from 'constructs';
 
@@ -88,6 +89,11 @@ export class ClientVpnStack extends cdk.Stack {
       'Client VPN connectivity VPC to OTLP gateway',
     );
 
+    const connectionLogGroup = new logs.LogGroup(this, 'ClientVpnConnectionLogs', {
+      retention: logs.RetentionDays.ONE_YEAR,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const endpoint = new ec2.CfnClientVpnEndpoint(this, 'ClientVpnEndpoint', {
       clientCidrBlock: K8S_CLIENT_VPN_CIDR,
       serverCertificateArn: props.serverCertificateArn,
@@ -99,7 +105,10 @@ export class ClientVpnStack extends cdk.Stack {
           },
         },
       ],
-      connectionLogOptions: { enabled: false },
+      connectionLogOptions: {
+        enabled: true,
+        cloudwatchLogGroup: connectionLogGroup.logGroupName,
+      },
       splitTunnel: true,
       dnsServers: [K8S_CONNECTIVITY_DNS],
       vpcId: vpc.vpcId,

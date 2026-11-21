@@ -5,6 +5,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as efs from 'aws-cdk-lib/aws-efs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as s3 from 'aws-cdk-lib/aws-s3';
@@ -57,6 +58,20 @@ export class GuardianStack extends cdk.Stack {
   private readonly clusters = new Map<string, ecs.Cluster>();
   private readonly volumes = new Map<string, VolumeHandle>();
   private readonly computes = new Map<string, ComputeHandle>();
+  private objectStoreKey?: kms.Key;
+
+  // Lazily create a customer-managed key for generated object stores so their
+  // contents are not protected by an S3-managed key only.
+  private getObjectStoreKey(): kms.Key {
+    if (!this.objectStoreKey) {
+      this.objectStoreKey = new kms.Key(this, 'ObjectStoreKmsKey', {
+        enableKeyRotation: true,
+        description: 'Guardian object store (S3) encryption',
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+    }
+    return this.objectStoreKey;
+  }
 
   constructor(scope: Construct, id: string, props: GuardianStackProps) {
     super(scope, id, props);
@@ -117,7 +132,8 @@ export class GuardianStack extends cdk.Stack {
     new s3.Bucket(this, `Bucket${id}`, {
       bucketName: call.generated.bucketName,
       versioned,
-      encryption: s3.BucketEncryption.S3_MANAGED,
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: this.getObjectStoreKey(),
       enforceSSL: true,
       autoDeleteObjects: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -219,7 +235,6 @@ export class GuardianStack extends cdk.Stack {
         actions: [
           'elasticfilesystem:ClientMount',
           'elasticfilesystem:ClientWrite',
-          'elasticfilesystem:ClientRootAccess',
           'elasticfilesystem:DescribeMountTargets',
         ],
         resources: [handle.fileSystem.attrArn],

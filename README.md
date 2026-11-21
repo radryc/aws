@@ -86,7 +86,8 @@ You can also override them per build (`--build-arg MONOFS_REF=<sha>`).
 `ObservabilityStack` adds the AWS-hosted trace plane:
 
 - `doctor-ingest` (OTLP 4317/4318 → MonoFS)
-- `doctor-query` (UI/API 18080, public CloudFront HTTPS + Cognito OIDC)
+- `doctor-query` (UI/API 18080, served through the Strata CloudFront edge with
+  Cognito OIDC when SSO is enabled)
 - `guardian-otlp-gateway` (OTLP receiver → Doctor)
 - VPC Lattice service network `strata-observability` and service `strata-otlp`
 - optional AWS RAM share for workload accounts
@@ -94,6 +95,7 @@ You can also override them per build (`--build-arg MONOFS_REF=<sha>`).
 ```bash
 npx cdk deploy StrataStack ObservabilityStack \
   -c deploySSO=true \
+  -c demoUserPassword='<at-least-12-chars>' \
   -c deployObservability=true \
   -c deployAwsPusher=false \
   -c deployDemoStack=false \
@@ -116,6 +118,7 @@ scripts/client-vpn-certs.sh --profile default --region us-east-1 \
 
 npx cdk deploy ClientVpnStack \
   -c deploySSO=true \
+  -c demoUserPassword='<at-least-12-chars>' \
   -c deployObservability=true \
   -c deployClientVpn=true \
   -c vpnServerCertificateArn=<server-arn> \
@@ -128,17 +131,27 @@ for the control-plane profiles and the wire contracts.
 
 ## Configuration
 
-All toggles live in `cdk.json` under `context`:
+Toggles are read from CDK context: the values in `cdk.json` under `context`,
+overridden per deploy with `-c`. The defaults below match `cdk.json` plus the
+code-level fallbacks:
 
 | Key | Default | Description |
 |---|---|---|
 | `deployMonofsServer` | `true` | MonoFS storage node |
 | `deployMonofsRouter` | `true` | ALB-exposed HTTP/gRPC router |
 | `deployMonofsFetcher` | `true` | S3 blob fetcher |
-| `deployMonofsRegistry` | `false` | Docker registry |
+| `deployMonofsRegistry` | `false` | OCI registry proxy (pull-through cache) |
 | `deployMonofsSearch` | `false` | Search index |
 | `deployGuardian` | `true` | Guardian control plane |
-| `deploySSO` | `false` | Amazon Cognito SSO for MonoFS + Guardian |
+| `deployAwsPusher` | `true` | Per-account AWS pusher (`AwsPusherStack`) |
+| `deployAwsObserve` | `true` | EventBridge + SQS CloudFormation observation in `AwsPusherStack` |
+| `deployDemoStack` | `true` | Demo stack (`DemoStack`) for scan/import/deploy |
+| `deployObservedPusher` | `false` | Self-contained observed-only pusher (`AwsObservedPusherStack`) |
+| `deploySSO` | `true` | Amazon Cognito SSO for MonoFS + Guardian |
+| `requireMfa` | `true` | Require TOTP MFA for Cognito users (`false` downgrades to optional) |
+| `acmCertificateArn` | empty | ACM cert ARN for the ALB `:443` listener; enables HTTP→HTTPS redirect and `HTTPS_ONLY` CloudFront origins. Without it, plaintext HTTP is used and synth warns |
+| `allowPublicDataPlane` | `false` | Expose MonoFS gRPC (`9000`/`9090`) and the Doctor origin (`8080`) to `0.0.0.0/0` |
+| `dataPlaneIngressCidrs` | VPC CIDR | Comma-separated CIDRs allowed to reach the data-plane ports when public exposure is off |
 | `serverCount` | `1` | MonoFS server replicas |
 | `routerCount` | `1` | MonoFS router replicas |
 | `fetcherCount` | `1` | Fetcher replicas |
@@ -170,18 +183,24 @@ npx cdk deploy -c deployMonofsSearch=true -c serverCount=3
 Enable SSO to require authentication for Guardian UI and MonoFS router:
 
 ```bash
-npm run deploy -- -c deploySSO=true
+npm run deploy -- -c deploySSO=true -c demoUserPassword='<at-least-12-chars>'
 ```
+
+`deploySSO=true` requires `demoUserPassword` (12+ characters) or synth fails.
 
 This provisions:
 - **Cognito User Pool** (email-based sign-in)
 - **App Client** (OIDC authorization code flow + PKCE)
-- **Hosted UI** at `https://<domain>.auth.<region>.amazoncognito.com`
+- **Hosted UI** at `https://strata-<account>.auth.<region>.amazoncognito.com`
 - **Client secret** stored in Secrets Manager (`strata/cognito/client-secret`)
+- **Demo identities** `usera@example.com`, `userb@example.com`, and
+  `admin@example.com` (username `akadmin`), all with the supplied permanent
+  password
 
 ### Create users
 
-After deploy, create users in the AWS Console:
+The stack seeds the three demo identities above. To add more, use the AWS
+Console:
 
 1. Go to **Cognito** → **User pools** → `strata`
 2. Click **Users** → **Create user**
@@ -195,17 +214,16 @@ After deploy, create users in the AWS Console:
 - Guardian exchanges the code for tokens and sets a session cookie
 - MonoFS router (`/monofs/auth/login`) does the same via `/monofs/auth/callback`
 - API calls use `Authorization: Bearer <id_token>` header
-- Default grant: `admin@example.com` gets admin on all partitions
+- Default grant: `admin@example.com` is an admin for the bootstrap partition
+  list in `access/base.yaml`; other subjects get only the scopes they declare
 
-### Grants
+### Access policy
 
-Grants are configured via `MONOFS_AUTHZ_GRANTS_JSON`:
-
-```json
-[{"subject":"admin@example.com","partition":"*","role":"admin"}]
-```
-
-Roles: `viewer` (read) → `ingester` (read+write) → `maintainer` (read+write+deploy) → `admin` (all partitions).
+Authorization comes from the repo-managed access policy
+(`access/envs/<env>.yaml`) published to Guardian. Add subjects and scopes there;
+roles are `viewer` (read) → `ingester` (read+write) → `maintainer`
+(read+write+deploy) → `admin` (all actions on the listed resources). A wildcard
+admin is global; explicit partition lists are scoped.
 
 ### Without SSO
 
@@ -230,7 +248,7 @@ The CDK creates the secret placeholder. You must populate it for the services to
 | **VPC** | 2 AZs, public + private subnets, 1 NAT gateway |
 | **ECS Cluster** | `strata`, Fargate, Container Insights enabled |
 | **ECS Services** | monofs-server, monofs-router, monofs-fetcher, guardiand (+ optional registry, search) |
-| **ALB** | Internet-facing HTTP on port 80 |
+| **ALB** | Internet-facing; HTTP `:80` (HTTPS `:443` when `acmCertificateArn` is set) |
 | **EFS** | Encrypted, lifecycle to IA after 14 days, access points for server/fetcher/search |
 | **S3** | `monofs-blobs-{account}-{region}`, versioned, encrypted, 30-day noncurrent expiration |
 | **Secrets Manager** | `strata/monofs/encryption-key`, `strata/monofs/token` |
@@ -245,14 +263,22 @@ After deployment, `cdk deploy` prints:
 
 | Output | Purpose |
 |---|---|
-| `AlbDnsName` | ALB DNS — Guardian UI at `/`, MonoFS at `/monofs/` |
+| `AlbDnsName` | ALB DNS name (origin for the Guardian and MonoFS routes) |
+| `AppUrl` | User-facing base URL — CloudFront when SSO is on, otherwise the ALB |
+| `MonofsUrl` | MonoFS UI at `<AppUrl>/monofs/` |
+| `MonofsTokenSecretArn` | Secret ARN for the static `MONOFS_TOKEN` |
+| `MonofsRouterEndpoint` | Router NLB endpoint (`<dns>:9090`) |
 | `EcsClusterName` | ECS cluster name (`strata`) |
 | `BlobBucketName` | S3 bucket for blob storage |
 | `EfsFileSystemId` | EFS filesystem ID |
 | `EncryptionKeySecretArn` | Secret ARN for the encryption key |
+| `GuardianAccessPolicyTokenSecretArn` | Secret ARN for Guardian access-policy publishing |
+| `DoctorUrl` | Doctor UI/API URL (SSO + observability enabled) |
 | `CognitoUserPoolId` (SSO) | Cognito User Pool ID |
 | `CognitoClientId` (SSO) | Cognito App Client ID |
 | `CognitoHostedUIUrl` (SSO) | Cognito hosted UI URL |
+| `CognitoLoginUrl` (SSO) | Prebuilt hosted-UI login URL |
+| `DemoUsers` (SSO) | Seeded demo identities |
 
 ## Account observability (CloudWatch + X-Ray → Grafana)
 
@@ -285,26 +311,34 @@ npm run diff      -- show changes vs deployed stack
 ```
 .
 ├── bin/
-│   └── strata.ts              # CDK app entry point
+│   └── strata.ts                  # CDK app entry point
 ├── lib/
-│   ├── docker-assets.ts       # Shared Docker image asset helper
-│   ├── strata-stack.ts        # MonoFS + Guardian (VPC, ECS, ALB, EFS, S3, IAM, …)
-│   ├── observability-stack.ts # Doctor + OTLP gateway + VPC Lattice
-│   ├── aws-pusher-stack.ts    # Per-account observability/read API pusher
-│   ├── aws-pusher-fleet-stack.ts
+│   ├── README.md                  # Customer onboarding & Sentinel alarm constructs
+│   ├── docker-assets.ts           # Shared Docker image asset helper
+│   ├── strata-stack.ts            # MonoFS + Guardian (VPC, ECS, ALB, EFS, S3, IAM, …)
+│   ├── observability-stack.ts     # Doctor + OTLP gateway + VPC Lattice
+│   ├── aws-pusher-stack.ts        # Per-account observability/read API pusher
+│   ├── aws-pusher-fleet-stack.ts  # Multi-account pusher fleet
 │   ├── aws-observed-pusher-stack.ts
-│   └── client-vpn-stack.ts
+│   ├── client-vpn-stack.ts
+│   ├── demo-stack.ts
+│   ├── guardian-observe.ts        # Customer onboarding construct
+│   ├── sentinel-alarms.ts         # Default CloudWatch alarm pack
+│   └── guardian-constructs/
+│       └── index.ts
 ├── docker/
-│   ├── fetch-source.sh        # Fetches a pinned public source repo
-│   └── *.Dockerfile           # Standalone image builds
+│   ├── fetch-source.sh            # Fetches a pinned public source repo
+│   └── *.Dockerfile               # Standalone image builds
 ├── scripts/
 │   ├── client-vpn-certs.sh
 │   └── client-vpn-config.sh
-├── templates/                 # Guardian AWS asset templates
-├── test/                      # Jest unit/snapshot tests
-├── cdk.json                   # CDK configuration & context toggles
-├── package.json               # Dependencies & scripts
-└── tsconfig.json              # TypeScript config
+├── templates/                     # Guardian AWS asset templates
+├── test/                          # Jest unit/snapshot tests
+├── cdk.json                       # CDK configuration & context toggles
+├── deploy.sh                      # Helper deploy script
+├── wipe.sh                        # Helper teardown script
+├── package.json                   # Dependencies & scripts
+└── tsconfig.json                  # TypeScript config
 ```
 
 ## Teardown

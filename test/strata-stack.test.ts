@@ -26,6 +26,30 @@ function makeStack(id: string, context?: Record<string, any>): { app: cdk.App; s
   return { app, stack };
 }
 
+function warnings(stack: cdk.Stack): string[] {
+  return stack.node.metadata
+    .filter((entry) => entry.type === 'aws:cdk:warning')
+    .map((entry) => String(entry.data));
+}
+
+/**
+ * Collect ingress rules from both standalone AWS::EC2::SecurityGroupIngress
+ * resources and the inline SecurityGroupIngress property of security groups.
+ */
+function ingressRules(template: Template): any[] {
+  const rules: any[] = [];
+  for (const resource of Object.values(template.findResources('AWS::EC2::SecurityGroupIngress'))) {
+    rules.push((resource as any).Properties ?? {});
+  }
+  for (const resource of Object.values(template.findResources('AWS::EC2::SecurityGroup'))) {
+    const inline = (resource as any).Properties?.SecurityGroupIngress ?? [];
+    for (const rule of inline) {
+      rules.push(rule);
+    }
+  }
+  return rules;
+}
+
 describe('StrataStack', () => {
   // ─────────────────────────────────────────────────────────
   // SNAPSHOT
@@ -123,12 +147,19 @@ describe('StrataStack', () => {
     });
   });
 
-  test('Monofs SG: at least 3 ingress rules (self-reference, ALB, Guardian)', () => {
+  test('Monofs SG: at least 3 ingress rules (self-reference, ALB on 8080, Guardian)', () => {
     const { stack } = makeStack('MonofsSgStack');
     const template = Template.fromStack(stack);
 
     const allIngress = template.findResources('AWS::EC2::SecurityGroupIngress');
     expect(Object.keys(allIngress).length).toBeGreaterThanOrEqual(3);
+
+    template.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
+      Description: 'ALB to monofs (router HTTP)',
+      FromPort: 8080,
+      ToPort: 8080,
+      IpProtocol: 'tcp',
+    });
   });
 
   test('EFS SG: NFS ingress from monofs SG on port 2049', () => {
@@ -191,15 +222,26 @@ describe('StrataStack', () => {
   });
 
   // ─────────────────────────────────────────────────────────
-  // EFS
+  // KMS & EFS
   // ─────────────────────────────────────────────────────────
-  test('EFS: encrypted, lifecycle policy, 3 access points', () => {
+  test('KMS: customer-managed key with automatic rotation enabled', () => {
+    const { stack } = makeStack('KmsStack');
+    const template = Template.fromStack(stack);
+
+    template.resourceCountIs('AWS::KMS::Key', 1);
+    template.hasResourceProperties('AWS::KMS::Key', {
+      EnableKeyRotation: true,
+    });
+  });
+
+  test('EFS: encrypted with KMS key, lifecycle policy, 3 access points', () => {
     const { stack } = makeStack('EfsStack');
     const template = Template.fromStack(stack);
 
     template.resourceCountIs('AWS::EFS::FileSystem', 1);
     template.hasResourceProperties('AWS::EFS::FileSystem', {
       Encrypted: true,
+      KmsKeyId: Match.anyValue(),
     });
 
     template.resourceCountIs('AWS::EFS::AccessPoint', 3);
@@ -208,19 +250,63 @@ describe('StrataStack', () => {
   // ─────────────────────────────────────────────────────────
   // S3
   // ─────────────────────────────────────────────────────────
-  test('S3: encrypted, versioned, SSL enforced, public access blocked', () => {
+  test('S3: KMS-encrypted blob bucket, access logs bucket, versioned, SSL enforced, public access blocked', () => {
     const { stack } = makeStack('S3Stack');
     const template = Template.fromStack(stack);
 
-    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.resourceCountIs('AWS::S3::Bucket', 2);
     template.hasResourceProperties('AWS::S3::Bucket', {
       BucketName: `monofs-blobs-${ACCOUNT}-${REGION}`,
       VersioningConfiguration: { Status: 'Enabled' },
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          Match.objectLike({
+            ServerSideEncryptionByDefault: Match.objectLike({
+              SSEAlgorithm: 'aws:kms',
+            }),
+          }),
+        ],
+      },
+      LoggingConfiguration: Match.objectLike({
+        LogFilePrefix: 'blob-access-logs/',
+      }),
       PublicAccessBlockConfiguration: {
         BlockPublicAcls: true,
         BlockPublicPolicy: true,
         IgnorePublicAcls: true,
         RestrictPublicBuckets: true,
+      },
+    });
+
+    const policies = template.findResources('AWS::S3::BucketPolicy');
+    const sslPolicies = Object.values(policies).filter((p: any) =>
+      JSON.stringify(p.Properties?.PolicyDocument).includes('aws:SecureTransport'),
+    );
+    expect(sslPolicies.length).toBe(2);
+
+    // The access-log bucket uses the customer-managed key as well.
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      LifecycleConfiguration: {
+        Rules: Match.arrayWith([Match.objectLike({ Id: 'ExpireAccessLogs' })]),
+      },
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          Match.objectLike({
+            ServerSideEncryptionByDefault: Match.objectLike({ SSEAlgorithm: 'aws:kms' }),
+          }),
+        ],
+      },
+    });
+
+    // S3 log delivery must be able to use the CMK.
+    template.hasResourceProperties('AWS::KMS::Key', {
+      KeyPolicy: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: ['kms:GenerateDataKey*', 'kms:Decrypt'],
+            Principal: { Service: 'logging.s3.amazonaws.com' },
+          }),
+        ]),
       },
     });
   });
@@ -332,7 +418,7 @@ describe('StrataStack', () => {
     template.resourceCountIs('AWS::EC2::VPC', 1);
     template.resourceCountIs('AWS::ECS::Cluster', 1);
     template.resourceCountIs('AWS::EFS::FileSystem', 1);
-    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.resourceCountIs('AWS::S3::Bucket', 2);
     template.resourceCountIs('AWS::SecretsManager::Secret', 3);
     template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 1);
     template.resourceCountIs('AWS::ECS::Service', 0);
@@ -376,6 +462,17 @@ describe('StrataStack', () => {
     template.hasResourceProperties('AWS::Cognito::UserPool', {
       UserPoolName: 'strata',
       AutoVerifiedAttributes: ['email'],
+      MfaConfiguration: 'ON',
+      EnabledMfas: ['SOFTWARE_TOKEN_MFA'],
+      Policies: {
+        PasswordPolicy: {
+          MinimumLength: 14,
+          RequireLowercase: true,
+          RequireUppercase: true,
+          RequireNumbers: true,
+          RequireSymbols: true,
+        },
+      },
     });
 
     template.resourceCountIs('AWS::Cognito::UserPoolClient', 1);
@@ -395,6 +492,145 @@ describe('StrataStack', () => {
 
   test('deploySSO=true requires demoUserPassword', () => {
     expect(() => makeStack('SsoNoPasswordStack', { deploySSO: true })).toThrow(/demoUserPassword/);
+  });
+
+  test('requireMfa=true sets Cognito MfaConfiguration to ON', () => {
+    const { stack } = makeStack('SsoRequiredMfaStack', {
+      deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
+      requireMfa: true,
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      MfaConfiguration: 'ON',
+      EnabledMfas: ['SOFTWARE_TOKEN_MFA'],
+    });
+  });
+
+  test('requireMfa=false opts out of mandatory MFA', () => {
+    const { stack } = makeStack('SsoOptionalMfaStack', {
+      deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
+      requireMfa: false,
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      MfaConfiguration: 'OPTIONAL',
+      EnabledMfas: ['SOFTWARE_TOKEN_MFA'],
+    });
+  });
+
+  test('acmCertificateArn enables HTTPS :443 listener, HTTP->HTTPS redirect, and CloudFront HTTPS_ONLY origin', () => {
+    const certArn = `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/12345678-1234-1234-1234-123456789012`;
+    const { stack } = makeStack('HttpsStack', {
+      deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
+      acmCertificateArn: certArn,
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+      Port: 80,
+      Protocol: 'HTTP',
+      DefaultActions: Match.arrayWith([
+        Match.objectLike({
+          Type: 'redirect',
+          RedirectConfig: Match.objectLike({
+            Protocol: 'HTTPS',
+            Port: '443',
+            StatusCode: 'HTTP_301',
+          }),
+        }),
+      ]),
+    });
+
+    template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+      Port: 443,
+      Protocol: 'HTTPS',
+      Certificates: [{ CertificateArn: certArn }],
+    });
+
+    template.hasResourceProperties('AWS::EC2::SecurityGroup', {
+      GroupDescription: 'ALB ingress',
+      SecurityGroupIngress: Match.arrayWith([
+        Match.objectLike({
+          CidrIp: '0.0.0.0/0',
+          FromPort: 443,
+          ToPort: 443,
+          IpProtocol: 'tcp',
+        }),
+      ]),
+    });
+
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        Comment: 'strata edge (HTTPS for Guardian + MonoFS OIDC)',
+        Origins: Match.arrayWith([
+          Match.objectLike({
+            CustomOriginConfig: Match.objectLike({
+              OriginProtocolPolicy: 'https-only',
+            }),
+          }),
+        ]),
+      }),
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // DATA-PLANE EXPOSURE & TLS ANNOTATIONS
+  // ─────────────────────────────────────────────────────────
+  test('data-plane ports 8080/9000/9090 are not exposed to 0.0.0.0/0 by default', () => {
+    const { stack } = makeStack('PrivateDataPlaneStack', {
+      deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
+    });
+    const template = Template.fromStack(stack);
+
+    const ingress = ingressRules(template);
+    const exposed = ingress.filter((props: any) => {
+      return [8080, 9000, 9090].includes(Number(props.FromPort)) && props.CidrIp === '0.0.0.0/0';
+    });
+    expect(exposed).toHaveLength(0);
+  });
+
+  test('allowPublicDataPlane=true explicitly exposes 8080/9000/9090 to the internet', () => {
+    const { stack } = makeStack('PublicDataPlaneStack', {
+      deploySSO: true,
+      demoUserPassword: 'TestDemoPassword123!',
+      allowPublicDataPlane: true,
+    });
+    const template = Template.fromStack(stack);
+
+    const ingress = ingressRules(template);
+    for (const port of [8080, 9000, 9090]) {
+      const exposed = ingress.filter((props: any) => {
+        return Number(props.FromPort) === port && props.CidrIp === '0.0.0.0/0';
+      });
+      expect(exposed.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('dataPlaneIngressCidrs replaces the default VPC-only data-plane allow-list', () => {
+    const { stack } = makeStack('CidrDataPlaneStack', {
+      dataPlaneIngressCidrs: '203.0.113.0/24, 198.51.100.0/24',
+    });
+    const template = Template.fromStack(stack);
+
+    const allowed = ingressRules(template)
+      .map((props: any) => props.CidrIp)
+      .filter((cidr: any) => typeof cidr === 'string');
+    expect(allowed).toEqual(expect.arrayContaining(['203.0.113.0/24', '198.51.100.0/24']));
+  });
+
+  test('warns when no ACM certificate is configured and stays quiet when one is', () => {
+    const { stack: plain } = makeStack('NoCertWarnStack');
+    expect(warnings(plain).join('\n')).toContain('No ACM certificate configured');
+
+    const certArn = `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/12345678-1234-1234-1234-123456789012`;
+    const { stack: tls } = makeStack('CertNoWarnStack', { acmCertificateArn: certArn });
+    expect(warnings(tls).join('\n')).not.toContain('No ACM certificate configured');
   });
 
   // ─────────────────────────────────────────────────────────
