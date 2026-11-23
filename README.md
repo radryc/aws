@@ -14,14 +14,21 @@ CDK (TypeScript) project that deploys **MonoFS** and **Guardian** to **ECS Farga
                          │        │
           ┌──────────────▼──┐  ┌─▼──────────────┐
           │  monofs-router   │  │   guardiand     │
-          │  gRPC:9090       │  │   HTTP:8090     │
-          │  HTTP:8080       │  └─────────────────┘
-          └──┬───────┬───────┘
+          │  HTTP:8080       │  │   HTTP:8090     │
+          └──┬───────┬───────┘  └─────────────────┘
              │       │
-     ┌───────▼──┐ ┌──▼────────┐
-     │  server   │ │  fetcher   │
-     │  :9000    │ │  :9200     │
-     │  :7000    │ └────────────┘
+             │       │    guardianctl / pusher
+             │       └──────────┐
+             │                  ▼
+             │          ┌───────────────┐
+             │          │  NLB (public)  │
+             │          │ 9090 / 9000    │
+             │          └───────┬───────┘
+             │                  │
+     ┌───────▼──┐ ┌────────────▼┐
+     │  server   │ │  fetcher    │
+     │  :9000    │ │  :9200      │
+     │  :7000    │ └─────────────┘
      │  :9100    │
      └───┬───────┘
          │
@@ -30,8 +37,11 @@ CDK (TypeScript) project that deploys **MonoFS** and **Guardian** to **ECS Farga
     │ (data)  │   │ (blobs)   │
     └─────────┘   └──────────┘
 
-All services run in private subnets behind a NAT gateway.
-Service Connect provides internal DNS (strata.local).
+The ALB serves HTTP UI/API traffic. The internet-facing NLB exposes MonoFS
+gRPC (`:9090` router, `:9000` server) for `guardianctl` and pushers; the MonoFS
+token is required on every RPC, and ingress is restricted to the VPC CIDR
+unless `dataPlaneIngressCidrs` is set. All services run in private subnets
+behind a NAT gateway. Service Connect provides internal DNS (`strata.local`).
 ```
 
 ## Prerequisites
@@ -60,10 +70,19 @@ npm run bootstrap
 
 ```bash
 npm install
-npm run synth          # synthesize CloudFormation (no deploy)
-npm run diff           # preview changes against deployed stack
-npm run deploy         # deploy the stack
+
+# cdk.json enables SSO (deploySSO=true). Supply a Cognito-valid password,
+# or override with -c deploySSO=false for a throwaway stack.
+export STRATA_DEMO_PASSWORD='StrataDemo!2026'   # 14+ chars, upper/lower/digit/symbol
+
+npm run synth  -- -c demoUserPassword="$STRATA_DEMO_PASSWORD"
+npm run diff   -- -c demoUserPassword="$STRATA_DEMO_PASSWORD"
+npm run deploy -- -c demoUserPassword="$STRATA_DEMO_PASSWORD"
 ```
+
+`deploySSO=true` without `demoUserPassword` fails at synth time. The stack's
+synth check requires at least 12 characters, but Cognito enforces 14+ with
+upper/lowercase, digit, and symbol — use a password that satisfies Cognito.
 
 ## Container sources
 
@@ -95,7 +114,7 @@ You can also override them per build (`--build-arg MONOFS_REF=<sha>`).
 ```bash
 npx cdk deploy StrataStack ObservabilityStack \
   -c deploySSO=true \
-  -c demoUserPassword='<at-least-12-chars>' \
+  -c demoUserPassword='<14+ chars, upper/lower/digit/symbol>' \
   -c deployObservability=true \
   -c deployAwsPusher=false \
   -c deployDemoStack=false \
@@ -118,7 +137,7 @@ scripts/client-vpn-certs.sh --profile default --region us-east-1 \
 
 npx cdk deploy ClientVpnStack \
   -c deploySSO=true \
-  -c demoUserPassword='<at-least-12-chars>' \
+  -c demoUserPassword='<14+ chars, upper/lower/digit/symbol>' \
   -c deployObservability=true \
   -c deployClientVpn=true \
   -c vpnServerCertificateArn=<server-arn> \
@@ -183,10 +202,12 @@ npx cdk deploy -c deployMonofsSearch=true -c serverCount=3
 Enable SSO to require authentication for Guardian UI and MonoFS router:
 
 ```bash
-npm run deploy -- -c deploySSO=true -c demoUserPassword='<at-least-12-chars>'
+npm run deploy -- -c deploySSO=true -c demoUserPassword='<14+ chars, upper/lower/digit/symbol>'
 ```
 
-`deploySSO=true` requires `demoUserPassword` (12+ characters) or synth fails.
+`deploySSO=true` requires `demoUserPassword`; synth enforces 12+ characters and
+Cognito enforces 14+ with upper/lowercase, digit, and symbol. Use a password
+that satisfies both.
 
 This provisions:
 - **Cognito User Pool** (email-based sign-in)
@@ -229,9 +250,15 @@ admin is global; explicit partition lists are scoped.
 
 The static `MONOFS_TOKEN` from Secrets Manager remains available as a break-glass mechanism. Both auth paths work simultaneously.
 
-## Pre-Deploy: Encryption Key
+## Encryption Key
 
-Before the first deploy, set the MonoFS encryption key:
+CDK **auto-generates** the MonoFS encryption key (64 hex characters) when the
+stack creates the `strata/monofs/encryption-key` secret. No pre-deploy step is
+required for a new stack.
+
+Do **not** overwrite this secret after data exists: the key encrypts the stored
+blobs, and changing it makes existing content unreadable. If you are migrating
+from an externally managed key, set it before the services start:
 
 ```bash
 aws secretsmanager put-secret-value \
@@ -239,7 +266,7 @@ aws secretsmanager put-secret-value \
   --secret-string "$(openssl rand -hex 32)"
 ```
 
-The CDK creates the secret placeholder. You must populate it for the services to start.
+`EncryptionKeySecretArn` in the stack outputs points at the generated secret.
 
 ## Resources Created
 
@@ -249,12 +276,14 @@ The CDK creates the secret placeholder. You must populate it for the services to
 | **ECS Cluster** | `strata`, Fargate, Container Insights enabled |
 | **ECS Services** | monofs-server, monofs-router, monofs-fetcher, guardiand (+ optional registry, search) |
 | **ALB** | Internet-facing; HTTP `:80` (HTTPS `:443` when `acmCertificateArn` is set) |
+| **NLB** | Internet-facing MonoFS gRPC `:9090` (router) and `:9000` (server); VPC-CIDR ingress by default |
+| **CloudFront** | App edge when SSO is enabled; a separate distribution fronts Doctor in `ObservabilityStack` |
 | **EFS** | Encrypted, lifecycle to IA after 14 days, access points for server/fetcher/search |
 | **S3** | `monofs-blobs-{account}-{region}`, versioned, encrypted, 30-day noncurrent expiration |
-| **Secrets Manager** | `strata/monofs/encryption-key`, `strata/monofs/token` |
-| **CloudWatch** | Log group `/ecs/strata`, 14-day retention |
+| **Secrets Manager** | `strata/monofs/encryption-key`, `strata/monofs/token`, `strata/guardian/access-policy-token`, plus SSO and observability tokens |
+| **CloudWatch** | `/ecs/strata`, `/ecs/strata-observability`, `/ecs/strata-pusher`; 14-day retention, destroyed on teardown |
 | **IAM** | Execution roles and task roles with least-privilege permissions |
-| **Security Groups** | ALB, MonoFS (internode + ALB ingress), Guardian, EFS |
+| **Security Groups** | ALB/NLB, MonoFS (internode + ingress), Guardian, EFS |
 | **Cognito** (SSO) | User Pool, App Client, Hosted UI domain, client secret in Secrets Manager |
 
 ## Outputs
@@ -300,10 +329,10 @@ Disable with `npx cdk deploy -c deployAwsObserve=false`.
 ## Useful Commands
 
 ```bash
-npm run deploy    -- deploy the stack
-npm run destroy   -- tear down the stack
-npm run synth     -- synthesize CloudFormation template
-npm run diff      -- show changes vs deployed stack
+npm run deploy   # deploy the stack (add -c demoUserPassword=... while SSO is on)
+npm run destroy  # tear down the stack
+npm run synth    # synthesize CloudFormation
+npm run diff     # show changes vs the deployed stack
 ```
 
 ## Directory Structure
@@ -347,4 +376,14 @@ npm run diff      -- show changes vs deployed stack
 npm run destroy
 ```
 
-Note: The S3 bucket and EFS filesystem have `removalPolicy: DESTROY`, so they will be deleted. Secrets Manager secrets and CloudWatch log groups are also destroyed.
+Note: The S3 bucket, EFS filesystem, and CloudWatch log groups have
+`removalPolicy: DESTROY`, so they are deleted. Secrets Manager secrets have no
+explicit removal policy and default to **RETAIN** — delete them manually if you
+want a clean account:
+
+```bash
+aws secretsmanager delete-secret --secret-id strata/monofs/encryption-key --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id strata/monofs/token --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id strata/guardian/access-policy-token --force-delete-without-recovery
+# plus any SSO/observability/pusher tokens listed in the stack outputs
+```
