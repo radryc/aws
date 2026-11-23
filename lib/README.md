@@ -23,13 +23,14 @@ It creates:
 - an SSM descriptor at `/guardian/onboarding/<stack>`,
 - stack tags (`guardian.io/observe`, `guardian.io/partition`, `guardian.io/intent`),
 - a CloudWatch agent sidecar on every target task definition, listening on
-  `localhost:4317`/`4318` and forwarding OTLP to CloudWatch,
+  `0.0.0.0:4317`/`4318` and forwarding OTLP to CloudWatch (the application
+  should dial `localhost`),
 - minimal task-role permissions for CloudWatch metrics, Logs and X-Ray.
 
 It does **not** create the pusher or a Guardian partition. Deploy one
 `AwsObservedPusherStack` per account/region and let Guardian pull the descriptor.
 
-See `guardian/docs/architecture.md` (AWS subsystem, observed mode) for the full
+See [`guardian/docs/architecture.md`](https://github.com/radryc/guardian/blob/main/docs/architecture.md) (AWS subsystem, observed mode) for the full
 flow.
 
 ## Sentinel default alarms
